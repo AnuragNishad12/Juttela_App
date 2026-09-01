@@ -43,6 +43,7 @@ import com.example.juttela.Utils.UserPrefs
 import com.example.juttela.ViewModels.AcceptRequestViewModel
 import com.example.juttela.ViewModels.GetSmartRequestViewModel
 import com.example.juttela.ViewModels.RequestViewModel
+import com.example.juttela.ViewModels.SmartAcceptViewModel
 import com.example.juttela.ViewModels.SubscriptionViewModel
 
 @Composable
@@ -52,6 +53,7 @@ fun RequestScreen() {
     val getSmartRequestViewModel: GetSmartRequestViewModel = viewModel()
     val acceptRequestViewModel: AcceptRequestViewModel = viewModel()
     val subscriptionViewModel: SubscriptionViewModel = viewModel()
+    val smartAcceptViewModel: SmartAcceptViewModel = viewModel()
 
     val isPro by subscriptionViewModel.isPro.collectAsState()
     val freeState = requestViewModel.getState
@@ -65,6 +67,41 @@ fun RequestScreen() {
             getSmartRequestViewModel.getSmartRequests(userId)
         } else {
             requestViewModel.getMyRequests(userId)
+        }
+    }
+
+    fun onSmartAcceptClicked(requestId: String) {
+        val currentUserId = UserPrefs.getUserId(context)
+        val currentUserName = UserPrefs.getUserName(context)
+
+        if (currentUserId == null || currentUserName == null) {
+            Toast.makeText(
+                context,
+                "Something went wrong. Please sign in again.",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        acceptingRequestId = requestId
+
+        smartAcceptViewModel.acceptSmartRequest(
+            currentUserId = currentUserId.toString(),
+            currentUserName = currentUserName,
+            requestId = requestId
+        ) { success, message, data ->
+            acceptingRequestId = null
+
+            if (success && data != null) {
+                Toast.makeText(
+                    context,
+                    "Connected with ${data.otherUserName} • ${data.matchScore}% match",
+                    Toast.LENGTH_SHORT
+                ).show()
+                refreshRequests()
+            } else {
+                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -178,7 +215,7 @@ fun RequestScreen() {
                             request = request,
                             isAccepting = acceptingRequestId == request.id,
                             onAccept = {
-                                onAcceptClicked(request.id, request.senderName)
+                                onSmartAcceptClicked(request.id)
                             },
                             onReject = {
                                 Toast.makeText(

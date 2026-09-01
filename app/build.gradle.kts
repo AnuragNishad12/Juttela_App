@@ -16,6 +16,7 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+//        resValue("string", "mapbox_access_token", project.findProperty("MAPBOX_ACCESS_TOKEN") as String)
     }
 
     buildTypes {
@@ -68,4 +69,11 @@ dependencies {
     implementation("com.cloudinary:cloudinary-android:3.0.2")
     implementation("com.revenuecat.purchases:purchases:10.17.0")
     implementation("androidx.compose.material:material-icons-extended")
+    implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("io.coil-kt:coil-gif:2.7.0")
+    implementation("com.mapbox.maps:android-ndk27:11.29.0")
+    implementation("com.mapbox.extension:maps-compose-ndk27:11.29.0")
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+
+
 }

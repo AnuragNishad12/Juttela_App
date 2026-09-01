@@ -85,12 +85,10 @@ fun HomeScreen() {
     val isPro by subscriptionViewModel.isPro.collectAsState()
     var showPreferenceDialog by remember { mutableStateOf(false) }
     var selectedProfile by remember { mutableStateOf<ProfileDataNew?>(null) }
-
     var activity by remember { mutableStateOf("") }
     var latitude by remember { mutableStateOf<Double?>(null) }
     var longitude by remember { mutableStateOf<Double?>(null) }
     var showMatchesDialog by remember { mutableStateOf(false) }
-
     val smartMatchViewModel: SmartMatchViewModel = viewModel()
     val smartRequestViewModel: SmartRequestViewModel = viewModel()
     var showSmartDialog by remember { mutableStateOf(false) }
@@ -547,11 +545,10 @@ fun HomeScreen() {
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // ==================== FIND MATE BUTTON (PRO vs FREE) ====================
+
             val isBusyFinding = findMateViewModel.state.loading || getProfileViewModel.state.loading
 
             if (isPro) {
-                // Subscribed users see the premium gold button only.
                 JuttelaProButton(
                     text = "Find nearby people",
                     loading = isBusyFinding,
@@ -559,7 +556,7 @@ fun HomeScreen() {
                     onClick = { onProFindMateClicked() }
                 )
             } else {
-                // Free users see the original orange button only.
+
                 Button(
                     onClick = { onFindMateClicked() },
                     enabled = !isBusyFinding,

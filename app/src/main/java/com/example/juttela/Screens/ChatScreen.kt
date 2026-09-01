@@ -1,6 +1,7 @@
 package com.example.juttela.Screens
 
 import android.net.Uri
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -29,31 +30,81 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
-import com.example.juttela.DataSource.Models.Connection
+import coil.compose.AsyncImage
 import com.example.juttela.Utils.UserPrefs
 import com.example.juttela.ViewModels.ConnectionsViewModel
+import com.example.juttela.ViewModels.GetSmartConnectionsViewModel
+import com.example.juttela.ViewModels.SubscriptionViewModel
+
+data class ChatListItem(
+    val otherUserId: String,
+    val otherUserName: String,
+    val otherUserPhoto: String? = null,
+    val otherUserAge: Int? = null,
+    val activity: String,
+    val matchScore: Int? = null
+)
 
 @Composable
 fun ChatScreen(navController: NavHostController) {
     val context = LocalContext.current
     val connectionsViewModel: ConnectionsViewModel = viewModel()
-    val state = connectionsViewModel.state
+    val getSmartConnectionsViewModel: GetSmartConnectionsViewModel = viewModel()
+    val subscriptionViewModel: SubscriptionViewModel = viewModel()
+
+    val isPro by subscriptionViewModel.isPro.collectAsState()
+    val freeState = connectionsViewModel.state
+    val smartState = getSmartConnectionsViewModel.state
 
     LaunchedEffect(Unit) {
-        val userId = UserPrefs.getUserId(context)
-        if (userId != null) {
+        subscriptionViewModel.checkProStatus()
+    }
+
+    LaunchedEffect(isPro) {
+        val userId = UserPrefs.getUserId(context) ?: return@LaunchedEffect
+        if (isPro) {
+            getSmartConnectionsViewModel.getSmartConnections(userId)
+        } else {
             connectionsViewModel.getMyConnections(userId)
+        }
+    }
+
+    val loading = if (isPro) smartState.loading else freeState.loading
+    val success = if (isPro) smartState.success else freeState.success
+    val message = if (isPro) smartState.message else freeState.message
+
+    val chatItems: List<ChatListItem> = if (isPro) {
+        smartState.connections.map {
+            ChatListItem(
+                otherUserId = it.otherUserId,
+                otherUserName = it.otherUserName,
+                otherUserPhoto = it.otherUserPhoto,
+                otherUserAge = it.otherUserAge,
+                activity = it.activity,
+                matchScore = it.matchScore
+            )
+        }
+    } else {
+        freeState.connections.map {
+            ChatListItem(
+                otherUserId = it.otherUserId,
+                otherUserName = it.otherUserName,
+                activity = it.activity
+            )
         }
     }
 
@@ -64,17 +115,16 @@ fun ChatScreen(navController: NavHostController) {
             .background(Color(0xFFF8F8F8))
             .padding(horizontal = 20.dp, vertical = 16.dp)
     ) {
-        // ==================== HEADER ====================
         Text(
-            text = "Chat",
+            text = if (isPro) "Pro Chat" else "Chat",
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold,
             color = Color.Black
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            text = if (state.connections.isNotEmpty())
-                "${state.connections.size} people you're connected with"
+            text = if (chatItems.isNotEmpty())
+                "${chatItems.size} people you're connected with"
             else
                 "People you're connected with",
             fontSize = 14.sp,
@@ -84,21 +134,21 @@ fun ChatScreen(navController: NavHostController) {
         Spacer(modifier = Modifier.height(20.dp))
 
         when {
-            state.loading -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            loading -> {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = Color(0xFFFF7B00), strokeWidth = 3.dp)
                 }
             }
 
-            !state.success -> {
+            !success -> {
                 EmptyState(
                     icon = Icons.AutoMirrored.Filled.Chat,
                     title = "Something went wrong",
-                    subtitle = state.message.ifEmpty { "Please try again in a moment" }
+                    subtitle = message.ifEmpty { "Please try again in a moment" }
                 )
             }
 
-            state.connections.isEmpty() -> {
+            chatItems.isEmpty() -> {
                 EmptyState(
                     icon = Icons.AutoMirrored.Filled.Chat,
                     title = "No connections yet",
@@ -111,13 +161,19 @@ fun ChatScreen(navController: NavHostController) {
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     contentPadding = PaddingValues(bottom = 100.dp)
                 ) {
-                    items(state.connections) { connection ->
+                    items(chatItems) { item ->
                         ConnectionCard(
-                            connection = connection,
+                            item = item,
+                            showProDetails = isPro,
                             onClick = {
-                                val encodedName = Uri.encode(connection.otherUserName)
-                                navController.navigate("chatConversation/${connection.otherUserId}/$encodedName")
+                                val encodedName = Uri.encode(item.otherUserName)
+                                val encodedActivity = Uri.encode(item.activity)
+                                Log.d("ChatNav", "activity arg='$encodedActivity'")
+                                navController.navigate(
+                                    "chatConversation/${item.otherUserId}/$encodedName/$encodedActivity"
+                                )
                             }
+
                         )
                     }
                 }
@@ -126,12 +182,10 @@ fun ChatScreen(navController: NavHostController) {
     }
 }
 
-// ============================================================
-// CONNECTION CARD — elevated card, initials avatar, activity pill, chevron
-// ============================================================
 @Composable
 private fun ConnectionCard(
-    connection: Connection,
+    item: ChatListItem,
+    showProDetails: Boolean,
     onClick: () -> Unit
 ) {
     Box(
@@ -149,19 +203,60 @@ private fun ConnectionCard(
             .padding(14.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            InitialsAvatar(name = connection.otherUserName)
+            if (!item.otherUserPhoto.isNullOrBlank()) {
+                AsyncImage(
+                    model = item.otherUserPhoto,
+                    contentDescription = item.otherUserName,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                )
+            } else {
+                InitialsAvatar(name = item.otherUserName)
+            }
 
             Spacer(modifier = Modifier.width(14.dp))
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = connection.otherUserName,
+                    text = item.otherUserName,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = Color.Black
                 )
+
+                if (showProDetails && item.otherUserAge != null) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "${item.otherUserAge} yrs",
+                        fontSize = 12.sp,
+                        color = Color.Gray
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(6.dp))
-                ActivityPill(activity = connection.activity)
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ActivityPill(activity = item.activity)
+
+                    if (showProDetails && item.matchScore != null) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFFFFE6CC))
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Text(
+                                text = "${item.matchScore}%",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFFF7B00)
+                            )
+                        }
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.width(8.dp))
@@ -184,20 +279,15 @@ private fun ConnectionCard(
     }
 }
 
-// ============================================================
-// INITIALS AVATAR — colored circle with the first letter of the name,
-// color picked deterministically per person so avatars stay consistent
-// but vary across the list.
-// ============================================================
 @Composable
 private fun InitialsAvatar(name: String) {
     val palette = listOf(
-        Color(0xFF4A6CF7), // blue
-        Color(0xFFFF7B00), // orange
-        Color(0xFF2E7D32), // green
-        Color(0xFF8E24AA), // purple
-        Color(0xFFEF5350), // red
-        Color(0xFF00897B)  // teal
+        Color(0xFF4A6CF7),
+        Color(0xFFFF7B00),
+        Color(0xFF2E7D32),
+        Color(0xFF8E24AA),
+        Color(0xFFEF5350),
+        Color(0xFF00897B)
     )
     val color = palette[(name.hashCode().let { if (it < 0) -it else it }) % palette.size]
     val initial = name.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?"
@@ -218,9 +308,6 @@ private fun InitialsAvatar(name: String) {
     }
 }
 
-// ============================================================
-// ACTIVITY PILL — small rounded tag with an icon, replaces plain gray text
-// ============================================================
 @Composable
 private fun ActivityPill(activity: String) {
     Box(
@@ -238,7 +325,7 @@ private fun ActivityPill(activity: String) {
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(
-                text = activity.replaceFirstChar { it.uppercase() },
+                text = activity.replaceFirstChar { it.uppercaseChar() },
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium,
                 color = Color(0xFFFF7B00)
@@ -247,16 +334,13 @@ private fun ActivityPill(activity: String) {
     }
 }
 
-// ============================================================
-// EMPTY / ERROR STATE — icon in a soft circle, title, subtitle
-// ============================================================
 @Composable
 private fun EmptyState(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
     subtitle: String
 ) {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Box(
                 modifier = Modifier
@@ -273,18 +357,9 @@ private fun EmptyState(
                 )
             }
             Spacer(modifier = Modifier.height(14.dp))
-            Text(
-                text = title,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color.Black
-            )
+            Text(text = title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
             Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = subtitle,
-                fontSize = 13.sp,
-                color = Color.Gray
-            )
+            Text(text = subtitle, fontSize = 13.sp, color = Color.Gray)
         }
     }
 }
