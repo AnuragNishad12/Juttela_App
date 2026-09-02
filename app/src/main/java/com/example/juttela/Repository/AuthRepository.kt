@@ -19,6 +19,8 @@ import com.example.juttela.DataSource.Models.GetProfileResponse
 import com.example.juttela.DataSource.Models.GetRequestsResponse
 import com.example.juttela.DataSource.Models.GetSmartConnectionsRequest
 import com.example.juttela.DataSource.Models.GetSmartConnectionsResponse
+import com.example.juttela.DataSource.Models.GoogleAuthRequest
+import com.example.juttela.DataSource.Models.GoogleAuthResponse
 import com.example.juttela.DataSource.Models.LocationPinRequest
 import com.example.juttela.DataSource.Models.LocationSessionResponse
 import com.example.juttela.DataSource.Models.LocationSessionStartRequest
@@ -159,6 +161,11 @@ class AuthRepository {
 
     suspend fun getArrivalsRepo(userId: String): ArrivalsResponse {
         return RetrofitClient.api.getArrivals(userId)
+    }
+
+
+    suspend fun GoogleAuthRepo(request: GoogleAuthRequest) : GoogleAuthResponse{
+        return RetrofitClient.api.googleAuth(request)
     }
 
 }

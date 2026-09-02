@@ -17,6 +17,8 @@ import com.example.juttela.DataSource.Models.GetProfileResponse
 import com.example.juttela.DataSource.Models.GetRequestsResponse
 import com.example.juttela.DataSource.Models.GetSmartConnectionsRequest
 import com.example.juttela.DataSource.Models.GetSmartConnectionsResponse
+import com.example.juttela.DataSource.Models.GoogleAuthRequest
+import com.example.juttela.DataSource.Models.GoogleAuthResponse
 import com.example.juttela.DataSource.Models.LocationPinRequest
 import com.example.juttela.DataSource.Models.LocationSessionResponse
 import com.example.juttela.DataSource.Models.LocationSessionStartRequest
@@ -167,6 +169,13 @@ interface ApiService {
     suspend fun getArrivals(
         @Path("userId") userId: String
     ): ArrivalsResponse
+
+
+
+    @POST("api/users/google")
+    suspend fun googleAuth(
+        @Body request: GoogleAuthRequest
+    ): GoogleAuthResponse
 
 
 

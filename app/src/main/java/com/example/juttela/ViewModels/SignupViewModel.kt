@@ -33,7 +33,6 @@ class SignupViewModel(application: Application) : AndroidViewModel(application) 
         name: String,
         email: String,
         password: String,
-        mobileId: String
     ) {
         viewModelScope.launch {
             state = state.copy(loading = true)
@@ -42,8 +41,7 @@ class SignupViewModel(application: Application) : AndroidViewModel(application) 
                     SignupRequest(
                         name,
                         email,
-                        password,
-                        mobileId.toString()
+                        password
                     )
                 )
 
