@@ -40,17 +40,16 @@ data class ProfileDataNew(
     @SerializedName("gender")
     val gender: String?,
 
-
     @SerializedName("interests")
-val interests: List<String>? = emptyList(),
+    val interests: List<String>? = emptyList(),
 
-@SerializedName("rating")
-val rating: RatingData,
+    @SerializedName("rating")
+    val rating: RatingData? = null,
 
-@SerializedName("feedbackCount")
-val feedbackCount: Int = 0
-
+    @SerializedName("feedbacks")
+    val feedbacks: FeedbacksData? = null
 )
+
 data class RatingData(
     @SerializedName("average")
     val average: Double = 0.0,
@@ -59,3 +58,33 @@ data class RatingData(
     val count: Int = 0
 )
 
+data class FeedbacksData(
+    @SerializedName("count")
+    val count: Int = 0,
+
+    @SerializedName("list")
+    val list: List<FeedbackData> = emptyList()
+)
+
+data class FeedbackData(
+    @SerializedName("_id")
+    val id: String,
+
+    @SerializedName("fromUserId")
+    val fromUserId: String,
+
+    @SerializedName("toUserId")
+    val toUserId: String,
+
+    @SerializedName("message")
+    val message: String,
+
+    @SerializedName("createdAt")
+    val createdAt: String,
+
+    @SerializedName("updatedAt")
+    val updatedAt: String,
+
+    @SerializedName("__v")
+    val version: Int
+)

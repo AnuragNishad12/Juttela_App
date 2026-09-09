@@ -73,22 +73,12 @@ fun SignUpScreen(
     var name by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
 
-    /*
-     * Local loading flag for the Google flow.
-     * Set true the instant the button is tapped (before the
-     * account picker Activity even launches), cleared once
-     * a result comes back and the backend call finishes.
-     */
+
     var isGoogleFlowLoading by remember { mutableStateOf(false) }
 
     val isLoading = signupState.loading || googleState.loading || isGoogleFlowLoading
 
-    /*
-     * Legacy Google Sign-In uses an Activity Result launcher
-     * instead of a suspend function — this replaces
-     * startActivityForResult/onActivityResult from the old
-     * Activity-based approach.
-     */
+
     val googleSignInLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -106,11 +96,7 @@ fun SignUpScreen(
 
             Log.d("GoogleAuth", "Google ID token received")
 
-            /*
-             * Send ID token to backend.
-             * isGoogleFlowLoading stays true here; googleState.loading
-             * takes over to keep the spinner going during the backend call.
-             */
+
             googleAuthViewModel.googleAuth(
                 idToken = idToken
             ) { success, message, userId, user ->
@@ -140,10 +126,6 @@ fun SignUpScreen(
         }
     }
 
-    /*
-     * Navigate after successful normal signup
-     * OR successful Google authentication.
-     */
     LaunchedEffect(signupState.success, googleState.success) {
         if (signupState.success || googleState.success) {
             navController.navigate("main") {

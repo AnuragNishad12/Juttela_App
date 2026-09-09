@@ -6,6 +6,7 @@ object UserPrefs {
     private const val PREFS_NAME = "juttela_prefs"
     private const val KEY_USER_ID = "user_id"
     private const val KEY_USER_NAME = "user_name"
+    private const val KEY_PROFILE_IMAGE_URL = "profile_image_url"
 
     fun saveUserId(context: Context, userId: String) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -25,6 +26,16 @@ object UserPrefs {
     fun getUserName(context: Context): String? {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return prefs.getString(KEY_USER_NAME, null)
+    }
+
+    fun saveProfileImageUrl(context: Context, profileImageUrl: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_PROFILE_IMAGE_URL, profileImageUrl).apply()
+    }
+
+    fun getProfileImageUrl(context: Context): String? {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_PROFILE_IMAGE_URL, null)
     }
 
     fun clear(context: Context) {

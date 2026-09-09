@@ -14,6 +14,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresApi
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -58,7 +59,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -78,12 +81,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.example.juttela.DataSource.Models.Message
 import com.example.juttela.R
 import com.example.juttela.Services.LocationTrackingService
+import com.example.juttela.Utils.DailyChatLimitStore
 import com.example.juttela.Utils.MeetupSessionPrefs
 import com.example.juttela.Utils.UserPrefs
 import com.example.juttela.ViewModels.AddUserToSessionViewModel
@@ -91,11 +97,13 @@ import com.example.juttela.ViewModels.CancelSessionViewModel
 import com.example.juttela.ViewModels.GetConversationViewModel
 import com.example.juttela.ViewModels.SendMessageViewModel
 import com.example.juttela.ViewModels.SessionStartViewModel
+import com.example.juttela.ViewModels.SubscriptionViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
+@RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun ChatConversationScreen(
     navController: NavHostController,
@@ -126,12 +134,34 @@ fun ChatConversationScreen(
     var pinnedAddress by remember { mutableStateOf<String?>(null) }
     val cancelSessionViewModel: CancelSessionViewModel = viewModel()
 
+    val subscriptionViewModel: SubscriptionViewModel = viewModel()
+    val isPro by subscriptionViewModel.isPro.collectAsState()
+
+    val chatLimitStore = remember { DailyChatLimitStore(context) }
+    var remainingMessages by remember { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        mutableIntStateOf(chatLimitStore.remainingMessages())
+    } else {
+        TODO("VERSION.SDK_INT < O")
+    }
+    }
+    var remainingLocations by remember { mutableIntStateOf(chatLimitStore.remainingLocations()) }
+
     // active session tracking state — restored from local prefs per
     // conversation, so it persists across app restarts on THIS device
     var activeSessionId by remember {
         mutableStateOf(MeetupSessionPrefs.getSessionIdForUser(context, otherUserId))
     }
     var pendingSession by remember { mutableStateOf<Pair<String, String>?>(null) }
+
+    // ---------------------------------------------------------------
+    // Blocking progress state for the "accept activity location" flow:
+    // create session -> attach both users -> send confirmation ->
+    // request location perms -> start tracking service. Instead of a
+    // burst of toasts along the way, we show one full-screen spinner
+    // from the moment the user taps Accept until tracking is actually
+    // live (or the flow fails/needs a permission decision).
+    // ---------------------------------------------------------------
+    var isProcessingMeetup by remember { mutableStateOf(false) }
 
     // sessionIds we've already auto-started tracking for on this device,
     // so we don't re-trigger the permission flow every time the message
@@ -146,11 +176,26 @@ fun ChatConversationScreen(
         Toast.makeText(context, text, Toast.LENGTH_LONG).show()
     }
 
+    LaunchedEffect(state.messages) {
+        val latestCancellation = state.messages
+            .asReversed()
+            .firstNotNullOfOrNull { msg -> parseSessionCancelledMessage(msg.text) }
+
+        if (latestCancellation != null && latestCancellation == activeSessionId) {
+            LocationTrackingService.stop(context)
+            MeetupSessionPrefs.markCancelled(context, latestCancellation)
+            MeetupSessionPrefs.clear(context)
+            activeSessionId = null
+            showToast("The other person cancelled the meetup")
+        }
+    }
+
     fun startTrackingService(sessionId: String, userId: String) {
         LocationTrackingService.start(context, sessionId, userId)
         activeSessionId = sessionId
         MeetupSessionPrefs.save(context, sessionId, otherUserId)
-        showToast("Live location sharing started")
+        // Flow is complete — tracking is live, dismiss the progress overlay.
+        isProcessingMeetup = false
     }
 
     val backgroundPermissionLauncher = rememberLauncherForActivityResult(
@@ -161,6 +206,7 @@ fun ChatConversationScreen(
         if (granted && pending != null) {
             startTrackingService(pending.first, pending.second)
         } else {
+            isProcessingMeetup = false
             showToast("Background location denied — cannot track this meetup")
             Log.e("Chat", "Background location permission denied — cannot track in background")
         }
@@ -173,6 +219,7 @@ fun ChatConversationScreen(
         val pending = pendingSession
 
         if (!fineGranted || pending == null) {
+            isProcessingMeetup = false
             showToast("Location permission denied")
             Log.e("Chat", "Foreground location permission denied")
             pendingSession = null
@@ -188,12 +235,33 @@ fun ChatConversationScreen(
                 startTrackingService(pending.first, pending.second)
                 pendingSession = null
             } else {
+                // Still waiting on the background-location decision —
+                // keep the overlay up, backgroundPermissionLauncher's
+                // callback above will resolve it either way.
                 backgroundPermissionLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
             }
         } else {
             startTrackingService(pending.first, pending.second)
             pendingSession = null
         }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    fun requireFreeMessageSlot(): Boolean {
+        if (isPro) return true
+        if (chatLimitStore.canSendMessage()) return true
+        showToast("Daily message limit reached. Upgrade to Pro for unlimited chat.")
+        navController.navigate("subscription")
+        return false
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    fun requireFreeLocationSlot(): Boolean {
+        if (isPro) return true
+        if (chatLimitStore.canSendLocation()) return true
+        showToast("Daily location limit reached. Upgrade to Pro to share more pins.")
+        navController.navigate("subscription")
+        return false
     }
 
     fun requestLocationPermissionsAndStart(sessionId: String, userId: String) {
@@ -233,24 +301,28 @@ fun ChatConversationScreen(
 
     fun cancelActiveSession() {
         val sessionId = activeSessionId
-
         LocationTrackingService.stop(context)
         activeSessionId = null
 
         if (!sessionId.isNullOrBlank()) {
             MeetupSessionPrefs.markCancelled(context, sessionId)
             handledSessionIds.value = handledSessionIds.value + sessionId
+
+            val nameToSend = currentUserName?.trim().orEmpty()
+            if (nameToSend.isNotEmpty()) {
+                sendMessageViewModel.sendMessage(
+                    senderId = currentUserId ?: "",
+                    senderName = nameToSend,
+                    receiverId = otherUserId,
+                    text = "❌ Meetup cancelled\nSessionId: $sessionId"
+                ) { _, _, _ -> }
+            }
         }
         MeetupSessionPrefs.clear(context)
 
         if (sessionId.isNullOrBlank()) return
-
         cancelSessionViewModel.cancelSession(sessionId) { success, message, _ ->
-            if (success) {
-                showToast("Meetup cancelled")
-            } else {
-                showToast("Stopped sharing here, but server cancel failed: $message")
-            }
+            showToast(if (success) "Meetup cancelled" else "Stopped sharing here, but server cancel failed: $message")
         }
     }
 
@@ -306,18 +378,7 @@ fun ChatConversationScreen(
         }
     }
 
-    // ---------------------------------------------------------------
-    // SESSION CREATION FLOW (runs on the ACCEPTOR's device)
-    // Creates the session using the pin the SENDER chose, attaches
-    // BOTH userIds to it in Redis, then — critically — sends a
-    // confirmation message BACK into the chat containing the
-    // sessionId. That confirmation message is what tells the
-    // SENDER's own device (via the LaunchedEffect further down) to
-    // also start tracking its own GPS for this same session. Without
-    // that message, only the acceptor's phone would ever report
-    // location, since the sender's phone has no other way to learn
-    // the session exists.
-    // ---------------------------------------------------------------
+
     fun createAndAttachSession(pinLat: Double, pinLng: Double, myUserId: String) {
         sessionStartViewModel.startSession(
             lat = pinLat,
@@ -325,6 +386,7 @@ fun ChatConversationScreen(
             invitedBy = otherUserId
         ) { success, message, session ->
             if (!success || session == null) {
+                isProcessingMeetup = false
                 showToast(message.ifBlank { "Failed to start session" })
                 Log.e("Chat", "Failed to start session: $message")
                 return@startSession
@@ -332,7 +394,6 @@ fun ChatConversationScreen(
 
             val sessionId = session.sessionId
             Log.d("Chat", "Session created: $sessionId invitedBy=$otherUserId")
-            showToast("Session started: $sessionId")
 
             MeetupSessionPrefs.save(context, sessionId, otherUserId)
             activeSessionId = sessionId
@@ -340,6 +401,7 @@ fun ChatConversationScreen(
 
             addUserToSessionViewModel.addUserToSession(sessionId, myUserId) { attachedMe, msgMe, _ ->
                 if (!attachedMe) {
+                    isProcessingMeetup = false
                     showToast("Failed to attach you: $msgMe")
                     Log.e("Chat", "Failed to attach current user: $msgMe")
                     return@addUserToSession
@@ -347,6 +409,7 @@ fun ChatConversationScreen(
 
                 addUserToSessionViewModel.addUserToSession(sessionId, otherUserId) { attachedOther, msgOther, _ ->
                     if (!attachedOther) {
+                        isProcessingMeetup = false
                         showToast("Failed to attach $otherUserName: $msgOther")
                         Log.e("Chat", "Failed to attach other user: $msgOther")
                         return@addUserToSession
@@ -374,6 +437,9 @@ fun ChatConversationScreen(
                         }
                     }
 
+                    // isProcessingMeetup stays true here — cleared only once
+                    // startTrackingService actually runs, or a permission is
+                    // denied along the way.
                     requestLocationPermissionsAndStart(sessionId, myUserId)
                 }
             }
@@ -410,7 +476,8 @@ fun ChatConversationScreen(
 
         if (latestConfirmation != null &&
             latestConfirmation !in handledSessionIds.value &&
-            latestConfirmation != activeSessionId
+            latestConfirmation != activeSessionId &&
+            !MeetupSessionPrefs.wasCancelled(context, latestConfirmation)
         ) {
             handledSessionIds.value = handledSessionIds.value + latestConfirmation
             Log.d("Chat", "Detected session confirmation, starting tracking: $latestConfirmation")
@@ -492,22 +559,21 @@ fun ChatConversationScreen(
             return
         }
 
-        showToast("Accepting meetup pin: ${"%.5f".format(pinLat)}, ${"%.5f".format(pinLng)}")
+        // Kick off the blocking overlay right when the user taps Accept —
+        // everything from here (GPS fix, session create, attach, perms,
+        // tracking start) happens behind the spinner instead of toasts.
+        isProcessingMeetup = true
 
         getAcceptorCurrentLocation { myLocation ->
             if (myLocation != null) {
                 myLat = myLocation.latitude
                 myLng = myLocation.longitude
-                showToast(
-                    "Your current location: ${"%.5f".format(myLocation.latitude)}, ${"%.5f".format(myLocation.longitude)}"
-                )
                 Log.d(
                     "Chat",
                     "Acceptor GPS=${myLocation.latitude},${myLocation.longitude} | pin=$pinLat,$pinLng"
                 )
             } else {
-                showToast("Could not read your current GPS yet. Using meetup pin to start session.")
-                Log.e("Chat", "Acceptor current location unavailable")
+                Log.w("Chat", "Acceptor current location unavailable — falling back to meetup pin")
             }
 
             createAndAttachSession(pinLat, pinLng, myUserId)
@@ -593,342 +659,381 @@ fun ChatConversationScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .safeDrawingPadding()
-            .background(Color(0xFFF8F8F8))
-    ) {
-        Row(
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .shadow(elevation = 2.dp, spotColor = Color.Black.copy(alpha = 0.08f))
-                .background(Color.White)
-                .padding(horizontal = 8.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .fillMaxSize()
+                .safeDrawingPadding()
+                .background(Color(0xFFF8F8F8))
         ) {
-            IconButton(onClick = { navController.popBackStack() }) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint = Color.Black
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .shadow(elevation = 2.dp, spotColor = Color.Black.copy(alpha = 0.08f))
+                    .background(Color.White)
+                    .padding(horizontal = 8.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = { navController.popBackStack() }) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = Color.Black
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(2.dp))
+                InitialsAvatar(name = otherUserName, size = 42.dp)
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = otherUserName,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.Black
                 )
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                if (activeSessionId != null) {
+                    IconButton(onClick = {
+                        navController.navigate("live_tracking/$activeSessionId")
+                    }) {
+                        Icon(
+                            imageVector = Icons.Filled.Map,
+                            contentDescription = "View live meetup map",
+                            tint = Color(0xFFFF7B00)
+                        )
+                    }
+                }
             }
 
-            Spacer(modifier = Modifier.width(2.dp))
-            InitialsAvatar(name = otherUserName, size = 42.dp)
-            Spacer(modifier = Modifier.width(10.dp))
-            Text(
-                text = otherUserName,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color.Black
-            )
-
-            Spacer(modifier = Modifier.weight(1f))
-
             if (activeSessionId != null) {
-                IconButton(onClick = {
-                    navController.navigate("live_tracking/$activeSessionId")
-                }) {
-                    Icon(
-                        imageVector = Icons.Filled.Map,
-                        contentDescription = "View live meetup map",
-                        tint = Color(0xFFFF7B00)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFE8F5E9))
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Sharing your live location for this meetup",
+                        fontSize = 12.sp,
+                        color = Color(0xFF2E7D32),
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = "Cancel",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFFD32F2F),
+                        modifier = Modifier.clickable { cancelActiveSession() }
                     )
                 }
             }
-        }
 
-        if (activeSessionId != null) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFFE8F5E9))
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "Sharing your live location for this meetup",
-                    fontSize = 12.sp,
-                    color = Color(0xFF2E7D32),
-                    fontWeight = FontWeight.Medium
-                )
-                Text(
-                    text = "Cancel",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFFD32F2F),
-                    modifier = Modifier.clickable { cancelActiveSession() }
-                )
-            }
-        }
-
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFFFFF4EA))
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.Top
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.LocationOn,
-                    contentDescription = null,
-                    tint = Color.Black,
-                    modifier = Modifier.padding(top = 1.dp).size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Meet smart, meet safe.\nSkip typing out addresses in chat — tap Send Location instead. It's quicker, clearer, and keeps your meetup details secure.",
-                    color = Color(0xFF626262),
-                    fontSize = 12.sp,
-                    lineHeight = 16.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-
-            Box(
+            Column(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
             ) {
-                when {
-                    state.loading && state.messages.isEmpty() -> {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = Color(0xFFFF7B00), strokeWidth = 3.dp)
-                        }
-                    }
-
-                    state.messages.isEmpty() -> {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(64.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0xFFFF7B00).copy(alpha = 0.1f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.Chat,
-                                        contentDescription = null,
-                                        tint = Color(0xFFFF7B00),
-                                        modifier = Modifier.size(28.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Text(
-                                    text = "Say hi to $otherUserName!",
-                                    color = Color.Black,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        }
-                    }
-
-                    else -> {
-                        LazyColumn(
-                            state = listState,
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(state.messages) { msg ->
-                                MessageBubble(
-                                    message = msg,
-                                    isMine = msg.senderId == currentUserId,
-                                    onOpenMaps = { lat, lng -> openMaps(context, lat, lng) },
-                                    onConfirmLocation = { lat, lng -> startMeetupSession(lat, lng) },
-                                    onRejectLocation = { sendPlain("Not this location") }
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .shadow(elevation = 6.dp, spotColor = Color.Black.copy(alpha = 0.08f))
-                .background(Color.White)
-                .padding(horizontal = 12.dp, vertical = 10.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                ActionChip(
-                    text = "Send activity location",
-                    selected = selectedAction == "location",
-                    selectedIcon = Icons.Filled.LocationOn,
-                    unselectedIcon = Icons.Outlined.LocationOn,
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        selectedAction = if (selectedAction == "location") null else "location"
-                    }
-                )
-                ActionChip(
-                    text = "Chat",
-                    selected = selectedAction == "chat",
-                    selectedIcon = Icons.AutoMirrored.Filled.Chat,
-                    unselectedIcon = Icons.Outlined.Chat,
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        selectedAction = if (selectedAction == "chat") null else "chat"
-                    }
-                )
-            }
-
-            AnimatedVisibility(
-                visible = selectedAction == "location",
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically()
-            ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 10.dp)
-                        .clip(RoundedCornerShape(16.dp))
                         .background(Color(0xFFFFF4EA))
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.Top
                 ) {
                     Icon(
                         imageVector = Icons.Filled.LocationOn,
                         contentDescription = null,
-                        tint = Color(0xFFFF7B00),
-                        modifier = Modifier.size(22.dp)
+                        tint = Color.Black,
+                        modifier = Modifier.padding(top = 1.dp).size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Share activity location", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                        Text("Send a pin the other person can open", fontSize = 12.sp, color = Color.Gray)
-                    }
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(Color(0xFFFF7B00))
-                            .clickable { navController.navigate("map_picker") }
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
-                    ) {
-                        Text("Send", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        text = "Meet smart, meet safe.\nSkip typing out addresses in chat — tap Send Location instead. It's quicker, clearer, and keeps your meetup details secure.",
+                        color = Color(0xFF626262),
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                ) {
+                    when {
+                        state.loading && state.messages.isEmpty() -> {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(color = Color(0xFFFF7B00), strokeWidth = 3.dp)
+                            }
+                        }
+
+                        state.messages.isEmpty() -> {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(64.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFFFF7B00).copy(alpha = 0.1f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.Chat,
+                                            contentDescription = null,
+                                            tint = Color(0xFFFF7B00),
+                                            modifier = Modifier.size(28.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Text(
+                                        text = "Say hi to $otherUserName!",
+                                        color = Color.Black,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                        }
+
+                        else -> {
+                            LazyColumn(
+                                state = listState,
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(state.messages) { msg ->
+                                    MessageBubble(
+                                        message = msg,
+                                        isMine = msg.senderId == currentUserId,
+                                        onOpenMaps = { lat, lng -> openMaps(context, lat, lng) },
+                                        onConfirmLocation = { lat, lng -> startMeetupSession(lat, lng) },
+                                        onRejectLocation = { sendPlain("Not this location") }
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
 
-            AnimatedVisibility(
-                visible = selectedAction == "chat",
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically()
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .shadow(elevation = 6.dp, spotColor = Color.Black.copy(alpha = 0.08f))
+                    .background(Color.White)
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
             ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    OutlinedTextField(
-                        value = inputText,
-                        onValueChange = { inputText = it },
-                        modifier = Modifier.weight(1f).focusRequester(chatFocusRequester),
-                        placeholder = { Text("Type a message...", color = Color.Gray, fontSize = 14.sp) },
-                        shape = RoundedCornerShape(24.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color(0xFFFF7B00),
-                            unfocusedBorderColor = Color(0xFFE0E0E0),
-                            focusedContainerColor = Color(0xFFF8F8F8),
-                            unfocusedContainerColor = Color(0xFFF8F8F8)
-                        ),
-                        maxLines = 4
+                    ActionChip(
+                        text = "Send activity location",
+                        selected = selectedAction == "location",
+                        selectedIcon = Icons.Filled.LocationOn,
+                        unselectedIcon = Icons.Outlined.LocationOn,
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            selectedAction = if (selectedAction == "location") null else "location"
+                        }
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Box(
+                    ActionChip(
+                        text = "Chat",
+                        selected = selectedAction == "chat",
+                        selectedIcon = Icons.AutoMirrored.Filled.Chat,
+                        unselectedIcon = Icons.Outlined.Chat,
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            selectedAction = if (selectedAction == "chat") null else "chat"
+                        }
+                    )
+                }
+
+                AnimatedVisibility(
+                    visible = selectedAction == "location",
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    Row(
                         modifier = Modifier
-                            .size(46.dp)
-                            .clip(CircleShape)
-                            .background(if (inputText.isBlank()) Color(0xFFE0E0E0) else Color(0xFFFF7B00)),
-                        contentAlignment = Alignment.Center
+                            .fillMaxWidth()
+                            .padding(top = 10.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color(0xFFFFF4EA))
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(onClick = { onSendClicked() }, enabled = inputText.isNotBlank()) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.Send,
-                                contentDescription = "Send",
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
-                            )
+                        Icon(
+                            imageVector = Icons.Filled.LocationOn,
+                            contentDescription = null,
+                            tint = Color(0xFFFF7B00),
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Share activity location", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Send a pin the other person can open", fontSize = 12.sp, color = Color.Gray)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(Color(0xFFFF7B00))
+                                .clickable { navController.navigate("map_picker") }
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                        ) {
+                            Text("Send", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+
+                AnimatedVisibility(
+                    visible = selectedAction == "chat",
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = inputText,
+                            onValueChange = { inputText = it },
+                            modifier = Modifier.weight(1f).focusRequester(chatFocusRequester),
+                            placeholder = { Text("Type a message...", color = Color.Gray, fontSize = 14.sp) },
+                            shape = RoundedCornerShape(24.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFFFF7B00),
+                                unfocusedBorderColor = Color(0xFFE0E0E0),
+                                focusedContainerColor = Color(0xFFF8F8F8),
+                                unfocusedContainerColor = Color(0xFFF8F8F8)
+                            ),
+                            maxLines = 4
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(46.dp)
+                                .clip(CircleShape)
+                                .background(if (inputText.isBlank()) Color(0xFFE0E0E0) else Color(0xFFFF7B00)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            IconButton(onClick = { onSendClicked() }, enabled = inputText.isNotBlank()) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.Send,
+                                    contentDescription = "Send",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
                     }
                 }
             }
         }
-    }
 
-    if (showMeetupDialog && pinnedLat != null && pinnedLng != null) {
-        val nowText = remember {
-            java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a", java.util.Locale.getDefault())
-                .format(java.util.Date())
+        if (showMeetupDialog && pinnedLat != null && pinnedLng != null) {
+            val nowText = remember {
+                java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a", java.util.Locale.getDefault())
+                    .format(java.util.Date())
+            }
+
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showMeetupDialog = false },
+                title = { Text("Meetup location", fontWeight = FontWeight.SemiBold) },
+                text = {
+                    Column {
+                        Text("Username: ${currentUserName ?: "-"}", fontSize = 14.sp)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text("Meeting with: $otherUserName", fontSize = 14.sp)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text("Address: ${pinnedAddress ?: "Finding address…"}", fontSize = 14.sp)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text("Pin: ${"%.5f".format(pinnedLat)}, ${"%.5f".format(pinnedLng)}", fontSize = 14.sp)
+                        if (myLat != null && myLng != null) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text("My location: ${"%.5f".format(myLat)}, ${"%.5f".format(myLng)}", fontSize = 14.sp)
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text("Date & time: $nowText", fontSize = 14.sp)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("Activity: $activityName", fontSize = 14.sp)
+                    }
+                },
+                confirmButton = {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(Color(0xFFFF7B00))
+                            .clickable { onSendMeetupLocation() }
+                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                    ) {
+                        Text("Send meetup location", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    }
+                },
+                dismissButton = {
+                    Text(
+                        text = "Cancel",
+                        modifier = Modifier.clickable { showMeetupDialog = false }.padding(8.dp),
+                        color = Color.Gray
+                    )
+                }
+            )
         }
 
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { showMeetupDialog = false },
-            title = { Text("Meetup location", fontWeight = FontWeight.SemiBold) },
-            text = {
-                Column {
-                    Text("Username: ${currentUserName ?: "-"}", fontSize = 14.sp)
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text("Meeting with: $otherUserName", fontSize = 14.sp)
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text("Address: ${pinnedAddress ?: "Finding address…"}", fontSize = 14.sp)
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text("Pin: ${"%.5f".format(pinnedLat)}, ${"%.5f".format(pinnedLng)}", fontSize = 14.sp)
-                    if (myLat != null && myLng != null) {
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text("My location: ${"%.5f".format(myLat)}, ${"%.5f".format(myLng)}", fontSize = 14.sp)
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text("Date & time: $nowText", fontSize = 14.sp)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text("Activity: $activityName", fontSize = 14.sp)
-//                    OutlinedTextField(
-//                        value = activityName.ifBlank { "Activity" },
-//                        onValueChange = {},
-//                        modifier = Modifier.fillMaxWidth(),
-//                        label = { Text("Activity") },
-//                        singleLine = true,
-//                        readOnly = true,
-//                        enabled = false,
-//                        shape = RoundedCornerShape(12.dp)
-//                    )
-                }
-            },
-            confirmButton = {
+        // Blocking progress overlay for the accept-meetup flow. Not
+        // dismissable by back press or outside tap — this is a short,
+        // multi-step network sequence that shouldn't be interrupted
+        // halfway (e.g. session created but tracking not started yet).
+        if (isProcessingMeetup) {
+            Dialog(
+                onDismissRequest = { /* not dismissable while in progress */ },
+                properties = DialogProperties(
+                    dismissOnBackPress = false,
+                    dismissOnClickOutside = false,
+                    usePlatformDefaultWidth = false
+                )
+            ) {
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(Color(0xFFFF7B00))
-                        .clickable { onSendMeetupLocation() }
-                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.35f)),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text("Send meetup location", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Column(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color.White)
+                            .padding(horizontal = 28.dp, vertical = 24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        CircularProgressIndicator(color = Color(0xFFFF7B00), strokeWidth = 3.dp)
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Text(
+                            text = "Setting up your meetup…",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.Black
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Starting live location sharing",
+                            fontSize = 12.sp,
+                            color = Color.Gray
+                        )
+                    }
                 }
-            },
-            dismissButton = {
-                Text(
-                    text = "Cancel",
-                    modifier = Modifier.clickable { showMeetupDialog = false }.padding(8.dp),
-                    color = Color.Gray
-                )
             }
-        )
+        }
     }
 }
+
+
 
 @Composable
 private fun MessageBubble(
@@ -1161,6 +1266,11 @@ private fun parseSessionAcceptedMessage(text: String): String? {
     if (!text.contains("Meetup accepted", ignoreCase = true)) return null
     val match = Regex("""SessionId:\s*([a-fA-F0-9-]{36})""").find(text) ?: return null
     return match.groupValues[1]
+}
+
+private fun parseSessionCancelledMessage(text: String): String? {
+    if (!text.contains("Meetup cancelled", ignoreCase = true)) return null
+    return Regex("""SessionId:\s*([a-fA-F0-9-]{36})""").find(text)?.groupValues?.get(1)
 }
 
 private suspend fun reverseGeocode(lng: Double, lat: Double, token: String): String? {

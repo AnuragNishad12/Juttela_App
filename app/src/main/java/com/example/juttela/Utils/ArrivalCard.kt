@@ -5,7 +5,6 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -22,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -30,13 +30,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.example.juttela.DataSource.Models.Arrival
+import com.example.juttela.ViewModels.FeedbackViewModel
+import com.example.juttela.ViewModels.RatingViewModel
 import java.text.SimpleDateFormat
 import java.util.*
 
 private val JuttelaOrange = Color(0xFFFF7A1A)
-private val CardBg = Color(0xFFFFFFFF)
 private val TextDark = Color(0xFF1A1A1A)
 private val TextGray = Color(0xFF9A9A9A)
 private val RateBarBg = Color(0xFFF4F4F4)
@@ -45,16 +47,16 @@ private val StarEmpty = Color(0xFFD0D0D0)
 private val RatingLabels = listOf("", "Terrible", "Bad", "Okay", "Good", "Awesome")
 
 @Composable
-fun ArrivalCard(item: Arrival) {
+fun ArrivalCard(
+    item: Arrival,
+    ratingViewModel: RatingViewModel = viewModel(),
+    feedbackViewModel: FeedbackViewModel = viewModel()
+) {
     val context = LocalContext.current
-    val key = reviewKey(item)
+    val cardKey = item.id
 
-    var rating by rememberSaveable(key) {
-        mutableIntStateOf(ArrivalReviewStore.getRating(context, key))
-    }
-    var feedback by rememberSaveable(key) {
-        mutableStateOf(ArrivalReviewStore.getFeedback(context, key))
-    }
+    var rating by rememberSaveable(cardKey) { mutableIntStateOf(0) }
+    var feedback by rememberSaveable(cardKey) { mutableStateOf("") }
     var showDialog by remember { mutableStateOf(false) }
     var dialogPresetRating by remember { mutableIntStateOf(0) }
 
@@ -95,12 +97,12 @@ fun ArrivalCard(item: Arrival) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = buildString {
-                        item.sender.age?.let { append("$it yrs") }
+                        append("${item.sender.age} yrs")
                         if (item.sender.gender.isNotBlank()) {
-                            if (isNotEmpty()) append(" · ")
+                            append(" · ")
                             append(item.sender.gender.replaceFirstChar { it.uppercase() })
                         }
-                    }.ifBlank { "—" },
+                    },
                     fontSize = 13.sp,
                     color = TextGray,
                     maxLines = 1,
@@ -136,13 +138,13 @@ fun ArrivalCard(item: Arrival) {
             item = item,
             initialRating = if (dialogPresetRating > 0) dialogPresetRating else rating,
             initialFeedback = feedback,
+            ratingViewModel = ratingViewModel,
+            feedbackViewModel = feedbackViewModel,
             onDismiss = { showDialog = false },
-            onSave = { newRating, newFeedback ->
-                ArrivalReviewStore.save(context, key, newRating, newFeedback)
+            onSaveSuccess = { newRating, newFeedback ->
                 rating = newRating
                 feedback = newFeedback
                 showDialog = false
-                Toast.makeText(context, "Review saved", Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -191,7 +193,7 @@ private fun RateReviewBar(
                 modifier = Modifier.height(32.dp),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = JuttelaOrange),
                 border = ButtonDefaults.outlinedButtonBorder.copy(
-                    brush = androidx.compose.ui.graphics.SolidColor(JuttelaOrange)
+                    brush = SolidColor(JuttelaOrange)
                 )
             ) {
                 Icon(
@@ -235,14 +237,87 @@ private fun ArrivalReviewDialog(
     item: Arrival,
     initialRating: Int,
     initialFeedback: String,
+    ratingViewModel: RatingViewModel,
+    feedbackViewModel: FeedbackViewModel,
     onDismiss: () -> Unit,
-    onSave: (Int, String) -> Unit
+    onSaveSuccess: (Int, String) -> Unit
 ) {
     val context = LocalContext.current
     var rating by remember { mutableIntStateOf(initialRating) }
     var feedback by remember { mutableStateOf(initialFeedback) }
+    var isSaving by remember { mutableStateOf(false) }
 
-    Dialog(onDismissRequest = onDismiss) {
+    val fromUserId = UserPrefs.getUserId(context).orEmpty()
+    val toUserId = item.sender.userId
+
+    fun submitFeedbackThenFinish() {
+        val text = feedback.trim()
+        if (text.isBlank()) {
+            isSaving = false
+            Toast.makeText(context, "Review saved", Toast.LENGTH_SHORT).show()
+            onSaveSuccess(rating, text)
+            return
+        }
+
+        feedbackViewModel.submitFeedback(
+            fromUserId = fromUserId,
+            toUserId = toUserId,
+            feedbackMessage = text
+        ) { success, message, _ ->
+            isSaving = false
+            if (success) {
+                Toast.makeText(context, "Review saved", Toast.LENGTH_SHORT).show()
+                onSaveSuccess(rating, text)
+            } else {
+                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun onSaveClicked() {
+        if (isSaving) return
+
+        if (rating == 0 && feedback.isBlank()) {
+            Toast.makeText(context, "Add a rating or feedback", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (fromUserId.isBlank()) {
+            Toast.makeText(context, "User not logged in", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (toUserId.isBlank()) {
+            Toast.makeText(context, "User id missing on card", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (fromUserId == toUserId) {
+            Toast.makeText(context, "You cannot review yourself", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        isSaving = true
+
+        if (rating > 0) {
+            ratingViewModel.submitRating(
+                fromUserId = fromUserId,
+                toUserId = toUserId,
+                stars = rating
+            ) { success, message, _ ->
+                if (!success) {
+                    isSaving = false
+                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                    return@submitRating
+                }
+                submitFeedbackThenFinish()
+            }
+        } else {
+            submitFeedbackThenFinish()
+        }
+    }
+
+    Dialog(onDismissRequest = { if (!isSaving) onDismiss() }) {
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -274,13 +349,7 @@ private fun ArrivalReviewDialog(
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = buildString {
-                                item.sender.age?.let { append("$it yrs") }
-                                if (item.sender.gender.isNotBlank()) {
-                                    if (isNotEmpty()) append(" · ")
-                                    append(item.sender.gender.replaceFirstChar { it.uppercase() })
-                                }
-                            }.ifBlank { "—" },
+                            text = "${item.sender.age} yrs · ${item.sender.gender.replaceFirstChar { it.uppercase() }}",
                             fontSize = 13.sp,
                             color = TextGray
                         )
@@ -332,7 +401,7 @@ private fun ArrivalReviewDialog(
                             tint = if (value <= rating) JuttelaOrange else StarEmpty,
                             modifier = Modifier
                                 .size(32.dp)
-                                .clickable { rating = value }
+                                .clickable(enabled = !isSaving) { rating = value }
                         )
                     }
                     if (rating > 0) {
@@ -357,6 +426,7 @@ private fun ArrivalReviewDialog(
                 OutlinedTextField(
                     value = feedback,
                     onValueChange = { feedback = it },
+                    enabled = !isSaving,
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = { Text("How was Your Experience?", fontSize = 13.sp) },
                     minLines = 3,
@@ -376,6 +446,7 @@ private fun ArrivalReviewDialog(
                 ) {
                     OutlinedButton(
                         onClick = onDismiss,
+                        enabled = !isSaving,
                         modifier = Modifier
                             .weight(1f)
                             .height(46.dp),
@@ -384,24 +455,23 @@ private fun ArrivalReviewDialog(
                         Text("Cancel")
                     }
                     Button(
-                        onClick = {
-                            if (rating == 0 && feedback.isBlank()) {
-                                Toast.makeText(
-                                    context,
-                                    "Add a rating or feedback",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                                return@Button
-                            }
-                            onSave(rating, feedback.trim())
-                        },
+                        onClick = { onSaveClicked() },
+                        enabled = !isSaving,
                         modifier = Modifier
                             .weight(1f)
                             .height(46.dp),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = JuttelaOrange)
                     ) {
-                        Text("Save", fontWeight = FontWeight.Bold, color = Color.White)
+                        if (isSaving) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = Color.White
+                            )
+                        } else {
+                            Text("Save", fontWeight = FontWeight.Bold, color = Color.White)
+                        }
                     }
                 }
             }
@@ -420,30 +490,6 @@ private fun DetailLine(label: String, value: String) {
             color = TextDark
         )
     }
-}
-
-private fun reviewKey(item: Arrival): String {
-    return "${item.sender.name}_${item.arrivedAtIso}_${item.pin.lat}_${item.pin.lng}"
-}
-
-private object ArrivalReviewStore {
-    private const val PREF = "arrival_reviews"
-
-    fun getRating(context: Context, key: String): Int =
-        prefs(context).getInt("${key}_rating", 0)
-
-    fun getFeedback(context: Context, key: String): String =
-        prefs(context).getString("${key}_feedback", "") ?: ""
-
-    fun save(context: Context, key: String, rating: Int, feedback: String) {
-        prefs(context).edit()
-            .putInt("${key}_rating", rating)
-            .putString("${key}_feedback", feedback)
-            .apply()
-    }
-
-    private fun prefs(context: Context) =
-        context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
 }
 
 private fun openInMaps(context: Context, lat: Double, lng: Double, label: String) {

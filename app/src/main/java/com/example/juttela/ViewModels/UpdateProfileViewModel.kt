@@ -10,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.juttela.DataSource.Models.ProfileData
 import com.example.juttela.DataSource.Models.UpdateProfileRequest
 import com.example.juttela.Repository.AuthRepository
+import com.example.juttela.Utils.UserPrefs
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 
@@ -87,6 +88,18 @@ class UpdateProfileViewModel(application: Application) : AndroidViewModel(applic
                     "UpdateProfileViewModel",
                     "Success: ${response.success}, message: ${response.message}"
                 )
+
+                if (response.success) {
+
+                    // Prefer the URL echoed back by the server; fall back to
+                    // what we sent up in case the response doesn't include it.
+                    val savedImageUrl = response.data?.profileImageUrl
+                        ?: profileImageUrl.takeIf { it.isNotBlank() }
+
+                    savedImageUrl?.let {
+                        UserPrefs.saveProfileImageUrl(getApplication(), it)
+                    }
+                }
 
                 state = UpdateProfileState(
                     loading = false,

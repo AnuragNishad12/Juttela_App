@@ -7,6 +7,9 @@ import com.example.juttela.DataSource.Models.ArrivalsResponse
 import com.example.juttela.DataSource.Models.CancelSessionResponse
 import com.example.juttela.DataSource.Models.ConnectionsRequest
 import com.example.juttela.DataSource.Models.ConnectionsResponse
+import com.example.juttela.DataSource.Models.DeleteAccountResponse
+import com.example.juttela.DataSource.Models.FeedbackRequest
+import com.example.juttela.DataSource.Models.FeedbackResponse
 import com.example.juttela.DataSource.Models.GeoAddRequestModel
 import com.example.juttela.DataSource.Models.GeoAddResponseModel
 import com.example.juttela.DataSource.Models.GetIdRequest
@@ -19,10 +22,11 @@ import com.example.juttela.DataSource.Models.GetSmartConnectionsRequest
 import com.example.juttela.DataSource.Models.GetSmartConnectionsResponse
 import com.example.juttela.DataSource.Models.GoogleAuthRequest
 import com.example.juttela.DataSource.Models.GoogleAuthResponse
-import com.example.juttela.DataSource.Models.LocationPinRequest
 import com.example.juttela.DataSource.Models.LocationSessionResponse
 import com.example.juttela.DataSource.Models.LocationSessionStartRequest
 import com.example.juttela.DataSource.Models.MobileCheckResponse
+import com.example.juttela.DataSource.Models.RatingRequest
+import com.example.juttela.DataSource.Models.RatingResponse
 import com.example.juttela.DataSource.Models.RequestAcceptedResponse
 import com.example.juttela.DataSource.Models.RequestModels
 import com.example.juttela.DataSource.Models.RequestResponse
@@ -177,8 +181,20 @@ interface ApiService {
         @Body request: GoogleAuthRequest
     ): GoogleAuthResponse
 
+    @DELETE("api/users/account/{userId}")
+    suspend fun deleteAccount(
+        @Path("userId") userId: String
+    ): DeleteAccountResponse
 
+    @POST("api/users/ratings")
+    suspend fun RatingApi(
+        @Body request : RatingRequest
+    ) : RatingResponse
 
+    @POST("api/users/feedback")
+    suspend fun FeedbackApi(
+        @Body request: FeedbackRequest
+    ) : FeedbackResponse
 
 
 }

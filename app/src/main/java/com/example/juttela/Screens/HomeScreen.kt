@@ -1,14 +1,18 @@
 package com.example.juttela.Screens
 
 import android.Manifest
+import android.app.Application
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
+import android.util.Log
 import android.widget.Toast
 import com.example.juttela.DataSource.Models.AgePreference
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.ui.graphics.Brush
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresApi
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -49,19 +53,28 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController
 import coil.compose.AsyncImage
+import com.example.juttela.DataSource.Models.LiveDeal
 import com.example.juttela.DataSource.Models.Match
 import com.example.juttela.DataSource.Models.ProfileDataNew
 import com.example.juttela.DataSource.Models.SendingSmartRequest
 import com.example.juttela.DataSource.Models.SmartMatch
 import com.example.juttela.R
 import com.example.juttela.Utils.CloudinaryUploader
+import com.example.juttela.Utils.DailyFindLimitStore
+import com.example.juttela.Utils.DailyProCardStore
+import com.example.juttela.Utils.DeleteAccountConfirmationDialog
+import com.example.juttela.Utils.DraggableProSubscriptionCard
+import com.example.juttela.Utils.LiveDealCard
 import com.example.juttela.Utils.NearbyMatchesDialog
 import com.example.juttela.Utils.SmartNearbyMatchesDialog
 import com.example.juttela.Utils.SmartPreferenceDialog
 import com.example.juttela.Utils.UserPrefs
 import com.example.juttela.Utils.getGreeting
+import com.example.juttela.ViewModels.DeleteAccountViewModel
 import com.example.juttela.ViewModels.FindMateViewModel
 import com.example.juttela.ViewModels.GetProfileViewModel
 import com.example.juttela.ViewModels.RequestViewModel
@@ -74,15 +87,30 @@ import com.example.juttela.components.PopularNearYou
 import com.google.android.gms.location.LocationServices
 import kotlinx.coroutines.launch
 
+
+@RequiresApi(Build.VERSION_CODES.O)
 @Composable
-fun HomeScreen() {
+fun HomeScreen(navController: NavController) {
     val context = LocalContext.current
     val findMateViewModel: FindMateViewModel = viewModel()
     val requestViewModel: RequestViewModel = viewModel()
     val getProfileViewModel: GetProfileViewModel = viewModel()
     val updateProfileViewModel: UpdateProfileViewModel = viewModel()
+    var showLiveBubble by remember { mutableStateOf(true) }
     val subscriptionViewModel: SubscriptionViewModel = viewModel()
     val isPro by subscriptionViewModel.isPro.collectAsState()
+    val dailyStore = remember { DailyProCardStore(context) }
+
+
+    val deleteAccountViewModel: DeleteAccountViewModel = viewModel(
+        factory = ViewModelProvider.AndroidViewModelFactory.getInstance(
+            context.applicationContext as Application
+        )
+    )
+
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    val deleteState = deleteAccountViewModel.state
+
     var showPreferenceDialog by remember { mutableStateOf(false) }
     var selectedProfile by remember { mutableStateOf<ProfileDataNew?>(null) }
     var activity by remember { mutableStateOf("") }
@@ -93,13 +121,21 @@ fun HomeScreen() {
     val smartRequestViewModel: SmartRequestViewModel = viewModel()
     var showSmartDialog by remember { mutableStateOf(false) }
     var smartMatches by remember { mutableStateOf<List<SmartMatch>>(emptyList()) }
+    val findLimitStore = remember { DailyFindLimitStore(context) }
+    var remainingFinds by remember {
+        mutableIntStateOf(findLimitStore.remaining())
+    }
 
-    // Profile related states
+
+
     var showProfileScreen by remember { mutableStateOf(false) }
     var showCompleteProfileDialog by remember { mutableStateOf(false) }
     var currentProfile by remember { mutableStateOf<ProfileDataNew?>(null) }
 
-    // Tracks which userIds we've already sent a request to (this session), and which one is mid-send
+    var headerProfileImageUrl by remember {
+        mutableStateOf(UserPrefs.getProfileImageUrl(context))
+    }
+
     var sentRequestIds by remember { mutableStateOf(setOf<String>()) }
     var sendingRequestId by remember { mutableStateOf<String?>(null) }
 
@@ -133,7 +169,7 @@ fun HomeScreen() {
             return
         }
 
-        // Use the profile we already loaded for the Pro flow
+
         val me = selectedProfile
         if (me == null) {
             Toast.makeText(
@@ -147,21 +183,18 @@ fun HomeScreen() {
         sendingRequestId = match.userId
 
         smartRequestViewModel.sendSmartRequest(
-            SendingSmartRequest(
+            request = SendingSmartRequest(
                 senderId = currentUserId.toString(),
                 senderName = currentUserName,
                 recipientId = match.userId,
-
-                // === CURRENT USER data (the sender) ===
                 name = me.name ?: currentUserName,
                 photo = me.profileImageUrl,
                 age = me.age,
-                gender = me.gender.toString(),
+                gender = me.gender.orEmpty(),
                 interests = me.interests ?: emptyList(),
-                rating = me.rating.average,               // or me.rating if it's already a number
-                feedbackCount = me.feedbackCount.takeIf { it > 0 } ?: me.rating.count,
-
-                // === from the match card ===
+                rating = me.rating?.average ?: 0.0,
+                feedbackCount = me.feedbacks?.count?.takeIf { it > 0 }
+                    ?: (me.rating?.count ?: 0),
                 activity = match.activity,
                 distanceKm = match.distanceKm,
                 matchScore = match.matchScore
@@ -224,6 +257,10 @@ fun HomeScreen() {
         }
     }
 
+    LaunchedEffect(isPro) {
+        Log.d("Subscription", "isPro changed: $isPro")
+    }
+
     LaunchedEffect(Unit) {
         if (hasLocationPermission()) {
             fetchLocation { }
@@ -234,7 +271,8 @@ fun HomeScreen() {
         subscriptionViewModel.checkProStatus()
     }
 
-    fun onFindMateClicked() {
+
+    fun onFindMateClicked(onSearchStarted: () -> Unit = {}) {
         if (activity.isBlank()) {
             Toast.makeText(context, "Please select an activity first", Toast.LENGTH_SHORT).show()
             return
@@ -262,6 +300,9 @@ fun HomeScreen() {
             }
             return
         }
+
+        // All guard clauses passed — the search is definitely about to fire.
+        onSearchStarted()
 
         // Reset sent-state for a fresh search
         sentRequestIds = emptySet()
@@ -348,7 +389,7 @@ fun HomeScreen() {
     }
 
     fun onRequestClicked(match: Match) {
-        // Guard: don't allow re-sending to someone already requested, or double-tap mid-send
+
         if (sentRequestIds.contains(match.userId) || sendingRequestId == match.userId) {
             return
         }
@@ -388,12 +429,18 @@ fun HomeScreen() {
     // ========== PROFILE CLICK ==========
     fun onProfileClicked() {
         val userId = UserPrefs.getUserId(context)
+
         if (userId == null) {
             Toast.makeText(context, "User not logged in", Toast.LENGTH_SHORT).show()
             return
         }
 
         getProfileViewModel.getProfile(userId) { success, message, profile ->
+            Log.d("PROFILE", "success=$success message=$message")
+            Log.d("PROFILE", "userId=${profile?.userId} name=${profile?.name}")
+            Log.d("PROFILE", "rating=${profile?.rating}")
+            Log.d("PROFILE", "feedbacks=${profile?.feedbacks}")
+
             if (success && profile != null) {
                 val isProfileIncomplete =
                     profile.profileImageUrl.isNullOrBlank() ||
@@ -407,7 +454,6 @@ fun HomeScreen() {
                     showProfileScreen = true
                 }
             } else {
-                // No Profile document yet → open create profile dialog
                 showCompleteProfileDialog = true
             }
         }
@@ -433,19 +479,19 @@ fun HomeScreen() {
         }
     }
 
+    // ==================== OUTER BOX: full screen, holds scroll content + floating bubble + dialogs ====================
     Box(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
     ) {
-        // ==================== MAIN HOME CONTENT ====================
+        // ==================== MAIN HOME CONTENT (scrolls) ====================
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
-
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -467,7 +513,7 @@ fun HomeScreen() {
                     )
                 }
 
-                // Profile Icon - now clickable
+                // Profile Icon - now clickable, shows the saved profile image when available
                 Box(
                     modifier = Modifier
                         .size(52.dp)
@@ -476,12 +522,25 @@ fun HomeScreen() {
                         .clickable { onProfileClicked() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.juttelaprofile),
-                        contentDescription = "Profile",
-                        modifier = Modifier.size(24.dp),
-                        tint = Color(0xFF4A6CF7)
-                    )
+                    if (!headerProfileImageUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = headerProfileImageUrl,
+                            contentDescription = "Profile",
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(CircleShape),
+                            contentScale = ContentScale.Crop,
+                            placeholder = painterResource(id = R.drawable.juttelaprofile),
+                            error = painterResource(id = R.drawable.juttelaprofile)
+                        )
+                    } else {
+                        Icon(
+                            painter = painterResource(id = R.drawable.juttelaprofile),
+                            contentDescription = "Profile",
+                            modifier = Modifier.size(24.dp),
+                            tint = Color(0xFF4A6CF7)
+                        )
+                    }
                 }
             }
 
@@ -545,8 +604,24 @@ fun HomeScreen() {
 
             Spacer(modifier = Modifier.height(20.dp))
 
-
             val isBusyFinding = findMateViewModel.state.loading || getProfileViewModel.state.loading
+
+            // FIXED: quota is now only deducted inside onSearchStarted, which
+            // onFindMateClicked() only invokes once every guard clause has passed
+            // and the network call is actually about to be made.
+            @RequiresApi(Build.VERSION_CODES.O)
+            fun onFreeFindClicked() {
+                if (!findLimitStore.canUse()) {
+                    navController.navigate("subscription")
+                    return
+                }
+                onFindMateClicked(
+                    onSearchStarted = {
+                        findLimitStore.recordUse()
+                        remainingFinds = findLimitStore.remaining()
+                    }
+                )
+            }
 
             if (isPro) {
                 JuttelaProButton(
@@ -556,10 +631,11 @@ fun HomeScreen() {
                     onClick = { onProFindMateClicked() }
                 )
             } else {
+                val limitReached = remainingFinds <= 0
 
                 Button(
-                    onClick = { onFindMateClicked() },
-                    enabled = !isBusyFinding,
+                    onClick = { onFreeFindClicked() },
+                    enabled = !isBusyFinding && !limitReached,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp),
@@ -587,7 +663,7 @@ fun HomeScreen() {
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(
-                                text = "Find nearby people",
+                                text = if (limitReached) "Daily limit reached" else "Find nearby people",
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -600,12 +676,52 @@ fun HomeScreen() {
                         }
                     }
                 }
+
+                if (!limitReached) {
+                    // FIXED: references the shared DAILY_FIND_LIMIT constant instead
+                    // of a hardcoded "15" literal, so the displayed number can never
+                    // drift out of sync with the actual limit enforced by the store.
+                    Text(
+                        text = "$remainingFinds of ${DailyFindLimitStore.DAILY_FIND_LIMIT} free finds left today",
+                        fontSize = 13.sp,
+                        color = Color.Gray,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
             PopularNearYou(
                 onActivityClick = { item ->
                     activity = item.title
+                }
+            )
+        }
+
+        LaunchedEffect(isPro) {
+            if (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    !isPro && dailyStore.shouldShowToday()
+                } else {
+                    TODO("VERSION.SDK_INT < O")
+                }
+            ) {
+                showLiveBubble = true
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    dailyStore.markShownToday()
+                }
+            } else {
+                showLiveBubble = false
+            }
+        }
+
+        if (showLiveBubble && !isPro) {
+            DraggableProSubscriptionCard(
+                snapToEdge = false,
+                priceLabel = "Upgrade",
+                onDismiss = { showLiveBubble = false },
+                onClick = {
+                    showLiveBubble = false
+                    navController.navigate("subscription")
                 }
             )
         }
@@ -628,17 +744,58 @@ fun HomeScreen() {
                 profile = currentProfile!!,
                 onBack = { showProfileScreen = false },
                 onLogout = {
-                    // Clear user data
-//                    UserPrefs.clear(context)          // make sure you have this method
-//                    showProfileScreen = false
-//                    Toast.makeText(context, "Logged out successfully", Toast.LENGTH_SHORT).show()
-//                    // You can also navigate to Login screen here if you have NavController
+
+
+
                 },
                 onDeleteAccount = {
-                    // TODO: Call delete account API when available
-                    Toast.makeText(context, "Delete Account clicked", Toast.LENGTH_SHORT).show()
+                    showDeleteDialog = true
+//                    Toast.makeText(context, "Delete Account clicked", Toast.LENGTH_SHORT).show()
                 }
             )
+        }
+
+        if (showDeleteDialog) {
+            DeleteAccountConfirmationDialog(
+                onConfirm = {
+                    showDeleteDialog = false
+
+                    val userId = UserPrefs.getUserId(context)
+                    if (userId.isNullOrBlank()) {
+                        Toast.makeText(context, "User ID not found", Toast.LENGTH_SHORT).show()
+                        return@DeleteAccountConfirmationDialog
+                    }
+
+                    deleteAccountViewModel.deleteAccount(userId) { success, message ->
+                        if (success) {
+                            UserPrefs.clear(context) // wipe everything from shared prefs
+                            showProfileScreen = false
+                            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+
+
+                            navController.navigate("signup") {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        } else {
+                            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                },
+                onDismiss = {
+                    showDeleteDialog = false
+                }
+            )
+        }
+
+        if (deleteState.loading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.3f)),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
+            }
         }
 
         // ==================== COMPLETE PROFILE DIALOG ====================
@@ -649,6 +806,8 @@ fun HomeScreen() {
                 onSuccess = {
                     showCompleteProfileDialog = false
                     Toast.makeText(context, "Profile completed successfully!", Toast.LENGTH_SHORT).show()
+                    // Refresh the header avatar with the freshly saved image
+                    headerProfileImageUrl = UserPrefs.getProfileImageUrl(context)
                     // Optionally re-fetch profile
                     onProfileClicked()
                 }
@@ -693,7 +852,7 @@ fun HomeScreen() {
             )
         }
 
-    }
+    } // <-- Outer Box ends HERE
 }
 
 // ============================================================
@@ -809,8 +968,13 @@ fun ProfileDetailsScreen(
     onDeleteAccount: () -> Unit
 ) {
     val interests = profile.interests ?: emptyList()
-    val ratingAverage = profile.rating.average
-    val ratingCount = profile.feedbackCount.takeIf { it > 0 } ?: profile.rating.count
+    val ratingAverage = profile.rating?.average ?: 0.0
+    val ratingCount = profile.feedbacks?.count?.takeIf { it > 0 }
+        ?: (profile.rating?.count ?: 0)
+    val feedbackMessages = profile.feedbacks?.list
+        ?.map { it.message }
+        ?.filter { it.isNotBlank() }
+        ?: emptyList()
 
     fun formatInterest(value: String): String {
         return value
@@ -833,8 +997,6 @@ fun ProfileDetailsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 18.dp, vertical = 14.dp)
         ) {
-
-
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -1005,27 +1167,38 @@ fun ProfileDetailsScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            Button(
-                onClick = onLogout,
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFFF7B00),
-                    contentColor = Color.White
-                )
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Color.White)
+                    .padding(16.dp)
             ) {
                 Text(
-                    text = "Logout",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold
+                    text = "Feedback",
+                    fontSize = 11.sp,
+                    color = Color.Gray
                 )
+                Spacer(modifier = Modifier.height(10.dp))
+
+                if (feedbackMessages.isEmpty()) {
+                    Text(
+                        text = "No feedback yet",
+                        fontSize = 13.sp,
+                        color = Color.Gray
+                    )
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        feedbackMessages.forEach { message ->
+                            FeedbackMessageCard(message = message)
+                        }
+                    }
+                }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
             OutlinedButton(
                 onClick = onDeleteAccount,
@@ -1047,6 +1220,26 @@ fun ProfileDetailsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
         }
+    }
+}
+
+
+
+@Composable
+private fun FeedbackMessageCard(message: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0xFFFFF8F1))
+            .padding(horizontal = 14.dp, vertical = 12.dp)
+    ) {
+        Text(
+            text = message,
+            fontSize = 13.sp,
+            color = Color(0xFF333333),
+            lineHeight = 18.sp
+        )
     }
 }
 

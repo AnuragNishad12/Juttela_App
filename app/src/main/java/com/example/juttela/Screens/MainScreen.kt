@@ -33,7 +33,7 @@ fun MainScreen(rootNavController: NavHostController) {
             startDestination = "home",
             modifier = Modifier.padding(padding)
         ) {
-            composable("home") { HomeScreen() }
+            composable("home") { HomeScreen(navController = rootNavController) }
             composable("Request") { RequestScreen() }
             composable("history") {
                 HistoryScreen(rootNavController)

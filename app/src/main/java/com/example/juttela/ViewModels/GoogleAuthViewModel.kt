@@ -11,6 +11,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.juttela.DataSource.Models.GoogleAuthRequest
 import com.example.juttela.DataSource.Models.UserAuthData
 import com.example.juttela.Repository.AuthRepository
+import com.example.juttela.Utils.UserPrefs
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 
@@ -64,6 +65,23 @@ class GoogleAuthViewModel(application: Application) : AndroidViewModel(applicati
                             "message=${response.message}, " +
                             "userId=${response.userId}"
                 )
+
+                if (response.success) {
+
+                    response.userId?.let { userId ->
+                        UserPrefs.saveUserId(getApplication(), userId)
+                        Log.d("UserPrefs", "User ID saved: $userId")
+                    } ?: run {
+                        Log.d("UserPrefs", "User ID NOT saved: userId is null")
+                    }
+
+                    response.user?.name?.let { name ->
+                        UserPrefs.saveUserName(getApplication(), name)
+                        Log.d("UserPrefs", "User name saved: $name")
+                    } ?: run {
+                        Log.d("UserPrefs", "User name NOT saved: name is null")
+                    }
+                }
 
                 state = GoogleAuthState(
                     loading = false,

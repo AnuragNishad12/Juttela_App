@@ -1,6 +1,7 @@
 package com.example.juttela.Repository
 
-import androidx.compose.ui.geometry.Rect
+import com.example.juttela.DataSource.Models.FeedbackRequest
+import com.example.juttela.DataSource.Models.FeedbackResponse
 import com.example.juttela.DataSource.Apis.RetrofitClient
 import com.example.juttela.DataSource.Models.AcceptUsersModel
 import com.example.juttela.DataSource.Models.AddUserToSessionRequest
@@ -9,6 +10,7 @@ import com.example.juttela.DataSource.Models.ArrivalsResponse
 import com.example.juttela.DataSource.Models.CancelSessionResponse
 import com.example.juttela.DataSource.Models.ConnectionsRequest
 import com.example.juttela.DataSource.Models.ConnectionsResponse
+import com.example.juttela.DataSource.Models.DeleteAccountResponse
 import com.example.juttela.DataSource.Models.GeoAddRequestModel
 import com.example.juttela.DataSource.Models.GeoAddResponseModel
 import com.example.juttela.DataSource.Models.GetIdRequest
@@ -21,10 +23,11 @@ import com.example.juttela.DataSource.Models.GetSmartConnectionsRequest
 import com.example.juttela.DataSource.Models.GetSmartConnectionsResponse
 import com.example.juttela.DataSource.Models.GoogleAuthRequest
 import com.example.juttela.DataSource.Models.GoogleAuthResponse
-import com.example.juttela.DataSource.Models.LocationPinRequest
 import com.example.juttela.DataSource.Models.LocationSessionResponse
 import com.example.juttela.DataSource.Models.LocationSessionStartRequest
 import com.example.juttela.DataSource.Models.MobileCheckResponse
+import com.example.juttela.DataSource.Models.RatingRequest
+import com.example.juttela.DataSource.Models.RatingResponse
 import com.example.juttela.DataSource.Models.RequestAcceptedResponse
 import com.example.juttela.DataSource.Models.RequestModels
 import com.example.juttela.DataSource.Models.RequestResponse
@@ -46,7 +49,6 @@ import com.example.juttela.DataSource.Models.UpdateProfileResponse
 import com.example.juttela.DataSource.Models.UpdateSessionLocationRequest
 import com.example.juttela.DataSource.Models.UpdateSessionLocationResponse
 import com.example.juttela.DataSource.Models.UserIdRequest
-import com.example.juttela.DataSource.Models.UserRequest
 
 class AuthRepository {
 
@@ -166,6 +168,18 @@ class AuthRepository {
 
     suspend fun GoogleAuthRepo(request: GoogleAuthRequest) : GoogleAuthResponse{
         return RetrofitClient.api.googleAuth(request)
+    }
+
+    suspend fun deleteAccount(userId: String): DeleteAccountResponse {
+        return RetrofitClient.api.deleteAccount(userId)
+    }
+
+    suspend fun RatingRepo(request : RatingRequest) : RatingResponse{
+        return RetrofitClient.api.RatingApi(request)
+    }
+
+    suspend fun FeedBackRepo(request: FeedbackRequest) : FeedbackResponse{
+        return RetrofitClient.api.FeedbackApi(request)
     }
 
 }

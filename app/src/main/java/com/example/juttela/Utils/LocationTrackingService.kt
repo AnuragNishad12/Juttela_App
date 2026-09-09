@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.location.Location
 import android.os.Build
 import android.os.IBinder
@@ -14,6 +15,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.juttela.DataSource.Models.UpdateSessionLocationRequest
 import com.example.juttela.Repository.AuthRepository
+import com.example.juttela.Utils.MeetupSessionPrefs
 import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
@@ -93,40 +95,87 @@ class LocationTrackingService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_START -> {
-                val newSessionId = intent.getStringExtra(EXTRA_SESSION_ID)
-                val newUserId = intent.getStringExtra(EXTRA_USER_ID)
+        // ------------------------------------------------------------
+        // CRITICAL FIX: START_STICKY services can be restarted by the
+        // system with intent == null after the process is killed. If we
+        // don't call startForeground() unconditionally in that path, the
+        // OS still expects a foreground promotion (since this service was
+        // previously foreground) and kills the app 5s later with
+        // ForegroundServiceDidNotStartInTimeException. So we ALWAYS start
+        // foreground first, using whatever session info we have — falling
+        // back to persisted prefs on a system-triggered restart — and
+        // only decide afterward whether there's anything to actually track.
+        // ------------------------------------------------------------
 
-                if (newSessionId == null || newUserId == null) {
-                    Log.e(TAG, "Missing sessionId or userId, stopping service")
-                    stopSelf()
-                    return START_NOT_STICKY
-                }
+        val action = intent?.action
 
-                sessionId = newSessionId
-                userId = newUserId
-
-                try {
-                    startForeground(NOTIFICATION_ID, buildNotification("Tracking your location…"))
-                } catch (e: Exception) {
-                    Log.e(TAG, "startForeground FAILED — check manifest foregroundServiceType. Error: ${e.message}", e)
-                    stopSelf()
-                    return START_NOT_STICKY
-                }
-
-                Log.d(TAG, "Foreground service started successfully for session=$newSessionId user=$newUserId")
-
-                startTrackingLoop()
+        // Try to recover session/user id: from the intent extras normally,
+        // or from persisted prefs if this is an OS restart with intent == null
+        // or a stray restart with a stripped action.
+        val recoveredSessionId = intent?.getStringExtra(EXTRA_SESSION_ID)
+            ?: sessionId
+            ?: MeetupSessionPrefs.let { prefs ->
+                // MeetupSessionPrefs is keyed by otherUserId, not sessionId,
+                // so we can only recover if we already cached it in-memory
+                // from a previous onStartCommand this process lifetime.
+                null
             }
+        val recoveredUserId = intent?.getStringExtra(EXTRA_USER_ID) ?: userId
 
+        try {
+            startForegroundCompat(buildNotification("Tracking your location…"))
+        } catch (e: Exception) {
+            Log.e(TAG, "startForeground FAILED: ${e.message}", e)
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        when (action) {
             ACTION_STOP -> {
                 Log.d(TAG, "Stop requested")
                 stopTracking()
+                return START_NOT_STICKY
+            }
+
+            ACTION_START -> {
+                if (recoveredSessionId == null || recoveredUserId == null) {
+                    Log.e(TAG, "Missing sessionId or userId on ACTION_START, stopping service")
+                    stopTracking()
+                    return START_NOT_STICKY
+                }
+                sessionId = recoveredSessionId
+                userId = recoveredUserId
+                Log.d(TAG, "Foreground service started for session=$recoveredSessionId user=$recoveredUserId")
+                startTrackingLoop()
+            }
+
+            else -> {
+                // System-triggered restart (intent == null) or an unknown
+                // action. If we don't have enough state in memory to resume
+                // tracking, there's nothing safe to do — we already called
+                // startForeground() above to satisfy the contract, so just
+                // shut down cleanly instead of running a zombie service.
+                if (sessionId == null || userId == null) {
+                    Log.w(TAG, "Restarted with no recoverable session state — stopping")
+                    stopTracking()
+                    return START_NOT_STICKY
+                } else {
+                    // We still have session state from before the restart —
+                    // resume tracking.
+                    startTrackingLoop()
+                }
             }
         }
 
         return START_STICKY
+    }
+
+    private fun startForegroundCompat(notification: Notification) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
     }
 
     private fun startTrackingLoop() {
@@ -229,6 +278,8 @@ class LocationTrackingService : Service() {
     private fun stopTracking() {
         trackingJob?.cancel()
         trackingJob = null
+        sessionId = null
+        userId = null
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -255,19 +306,30 @@ class LocationTrackingService : Service() {
     }
 
     private fun buildNotification(contentText: String): Notification {
+        // getLaunchIntentForPackage can return null (e.g. no LAUNCHER
+        // activity resolved yet) — guard it so buildNotification never
+        // throws inside the startForeground() call path.
         val openAppIntent = packageManager.getLaunchIntentForPackage(packageName)
-        val pendingIntent = PendingIntent.getActivity(
-            this, 0, openAppIntent,
-            PendingIntent.FLAG_IMMUTABLE
-        )
+        val pendingIntent = if (openAppIntent != null) {
+            PendingIntent.getActivity(
+                this, 0, openAppIntent,
+                PendingIntent.FLAG_IMMUTABLE
+            )
+        } else {
+            null
+        }
 
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Meetup in progress")
             .setContentText(contentText)
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
-            .setContentIntent(pendingIntent)
             .setOngoing(true)
-            .build()
+
+        if (pendingIntent != null) {
+            builder.setContentIntent(pendingIntent)
+        }
+
+        return builder.build()
     }
 
     private fun updateNotification(contentText: String) {

@@ -126,12 +126,3 @@ fun JuttelaProButton(
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-private fun JuttelaProButtonPreview() {
-    MaterialTheme {
-        Box(modifier = Modifier.padding(20.dp)) {
-            JuttelaProButton(onClick = {})
-        }
-    }
-}
