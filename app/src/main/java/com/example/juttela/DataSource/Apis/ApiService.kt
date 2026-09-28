@@ -25,8 +25,12 @@ import com.example.juttela.DataSource.Models.GoogleAuthResponse
 import com.example.juttela.DataSource.Models.LocationSessionResponse
 import com.example.juttela.DataSource.Models.LocationSessionStartRequest
 import com.example.juttela.DataSource.Models.MobileCheckResponse
+import com.example.juttela.DataSource.Models.NearbyActivitiesRequest
+import com.example.juttela.DataSource.Models.NearbyActivitiesResponse
 import com.example.juttela.DataSource.Models.RatingRequest
 import com.example.juttela.DataSource.Models.RatingResponse
+import com.example.juttela.DataSource.Models.RejectRequestBody
+import com.example.juttela.DataSource.Models.RejectRequestResponse
 import com.example.juttela.DataSource.Models.RequestAcceptedResponse
 import com.example.juttela.DataSource.Models.RequestModels
 import com.example.juttela.DataSource.Models.RequestResponse
@@ -195,6 +199,23 @@ interface ApiService {
     suspend fun FeedbackApi(
         @Body request: FeedbackRequest
     ) : FeedbackResponse
+
+    @POST("api/users/popular-nearby")
+    suspend fun PopularActivityNearBy(
+        @Body request : NearbyActivitiesRequest
+    ) : NearbyActivitiesResponse
+
+    @POST("api/users/reject-request")
+    suspend fun RejectRequestApi(
+        @Body request : RejectRequestBody
+    ) : RejectRequestResponse
+
+
+    @POST("api/users/reject-smart-request")
+    suspend fun RejectSmartRequest(
+        @Body request : RejectRequestBody
+    ): RejectRequestResponse
+
 
 
 }

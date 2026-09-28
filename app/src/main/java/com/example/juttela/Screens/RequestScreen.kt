@@ -36,12 +36,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.juttela.DataSource.Models.SmartGetRequest
 import com.example.juttela.DataSource.Models.UserRequest
 import com.example.juttela.Utils.SmartRequestCard
 import com.example.juttela.Utils.UserPrefs
 import com.example.juttela.ViewModels.AcceptRequestViewModel
 import com.example.juttela.ViewModels.GetSmartRequestViewModel
+import com.example.juttela.ViewModels.RejectRequestViewModel
+import com.example.juttela.ViewModels.RejectSmartRequestViewModel
 import com.example.juttela.ViewModels.RequestViewModel
 import com.example.juttela.ViewModels.SmartAcceptViewModel
 import com.example.juttela.ViewModels.SubscriptionViewModel
@@ -52,6 +53,8 @@ fun RequestScreen() {
     val requestViewModel: RequestViewModel = viewModel()
     val getSmartRequestViewModel: GetSmartRequestViewModel = viewModel()
     val acceptRequestViewModel: AcceptRequestViewModel = viewModel()
+    val rejectRequestViewModel: RejectRequestViewModel = viewModel()
+    val rejectSmartRequestViewModel: RejectSmartRequestViewModel = viewModel()
     val subscriptionViewModel: SubscriptionViewModel = viewModel()
     val smartAcceptViewModel: SmartAcceptViewModel = viewModel()
 
@@ -60,6 +63,7 @@ fun RequestScreen() {
     val smartState = getSmartRequestViewModel.state
 
     var acceptingRequestId by remember { mutableStateOf<String?>(null) }
+    var rejectingRequestId by remember { mutableStateOf<String?>(null) }
 
     fun refreshRequests() {
         val userId = UserPrefs.getUserId(context) ?: return
@@ -105,15 +109,76 @@ fun RequestScreen() {
         }
     }
 
-    // BUG FIX: this screen gets its own SubscriptionViewModel instance, separate from
-    // HomeScreen's. Without this call, isPro stays at its default value forever and
-    // the Pro branch below never runs — even for an actually-subscribed user.
+    fun onRejectClicked(requestId: String) {
+        val currentUserId = UserPrefs.getUserId(context)
+
+        if (currentUserId == null) {
+            Toast.makeText(
+                context,
+                "Something went wrong. Please sign in again.",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        rejectingRequestId = requestId
+
+        rejectRequestViewModel.rejectRequest(
+            currentUserId = currentUserId,
+            requestId = requestId
+        ) { success, message, data ->
+            rejectingRequestId = null
+
+            if (success) {
+                Toast.makeText(
+                    context,
+                    "Rejected ${data?.otherUserName ?: "request"}",
+                    Toast.LENGTH_SHORT
+                ).show()
+                refreshRequests()
+            } else {
+                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    fun onSmartRejectClicked(requestId: String) {
+        val currentUserId = UserPrefs.getUserId(context)
+
+        if (currentUserId == null) {
+            Toast.makeText(
+                context,
+                "Something went wrong. Please sign in again.",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        rejectingRequestId = requestId
+
+        rejectSmartRequestViewModel.rejectSmartRequest(
+            currentUserId = currentUserId,
+            requestId = requestId
+        ) { success, message, data ->
+            rejectingRequestId = null
+
+            if (success) {
+                Toast.makeText(
+                    context,
+                    "Rejected ${data?.otherUserName ?: "request"}",
+                    Toast.LENGTH_SHORT
+                ).show()
+                refreshRequests()
+            } else {
+                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     LaunchedEffect(Unit) {
         subscriptionViewModel.checkProStatus()
     }
 
-    // Re-fetches whenever isPro changes: fires once with the initial value, then again
-    // if checkProStatus() above updates it (e.g. false -> true after the check completes).
     LaunchedEffect(isPro) {
         val userId = UserPrefs.getUserId(context)
         if (userId == null) {
@@ -128,7 +193,7 @@ fun RequestScreen() {
         }
     }
 
-    fun onAcceptClicked(requestId: String, senderName: String) {
+    fun onAcceptClicked(requestId: String) {
         val currentUserId = UserPrefs.getUserId(context)
         val currentUserName = UserPrefs.getUserName(context)
 
@@ -214,16 +279,8 @@ fun RequestScreen() {
                         SmartRequestCard(
                             request = request,
                             isAccepting = acceptingRequestId == request.id,
-                            onAccept = {
-                                onSmartAcceptClicked(request.id)
-                            },
-                            onReject = {
-                                Toast.makeText(
-                                    context,
-                                    "Rejected ${request.senderName}",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
+                            onAccept = { onSmartAcceptClicked(request.id) },
+                            onReject = { onSmartRejectClicked(request.id) }
                         )
                     }
                 }
@@ -238,14 +295,9 @@ fun RequestScreen() {
                         RequestCard(
                             request = request,
                             isAccepting = acceptingRequestId == request.id,
-                            onAccept = { onAcceptClicked(request.id, request.senderName) },
-                            onReject = {
-                                Toast.makeText(
-                                    context,
-                                    "Rejected ${request.senderName}",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
+                            isRejecting = rejectingRequestId == request.id,
+                            onAccept = { onAcceptClicked(request.id) },
+                            onReject = { onRejectClicked(request.id) }
                         )
                     }
                 }
@@ -258,9 +310,12 @@ fun RequestScreen() {
 private fun RequestCard(
     request: UserRequest,
     isAccepting: Boolean,
+    isRejecting: Boolean,
     onAccept: () -> Unit,
     onReject: () -> Unit
 ) {
+    val buttonsEnabled = !isAccepting && !isRejecting
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -302,7 +357,7 @@ private fun RequestCard(
             ) {
                 Button(
                     onClick = onReject,
-                    enabled = !isAccepting,
+                    enabled = buttonsEnabled,
                     modifier = Modifier
                         .weight(1f)
                         .height(42.dp),
@@ -312,16 +367,24 @@ private fun RequestCard(
                         contentColor = Color.Black
                     )
                 ) {
-                    Text(
-                        text = "Reject",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    if (isRejecting) {
+                        CircularProgressIndicator(
+                            color = Color.Black,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.height(18.dp)
+                        )
+                    } else {
+                        Text(
+                            text = "Reject",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
 
                 Button(
                     onClick = onAccept,
-                    enabled = !isAccepting,
+                    enabled = buttonsEnabled,
                     modifier = Modifier
                         .weight(1f)
                         .height(42.dp),
@@ -349,7 +412,6 @@ private fun RequestCard(
         }
     }
 }
-
 
 private fun formatDistance(km: Double): String {
     return if (km < 1.0) {

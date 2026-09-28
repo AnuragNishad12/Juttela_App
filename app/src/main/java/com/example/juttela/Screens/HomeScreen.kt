@@ -33,6 +33,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ThumbUp
@@ -100,6 +101,40 @@ fun HomeScreen(navController: NavController) {
     val subscriptionViewModel: SubscriptionViewModel = viewModel()
     val isPro by subscriptionViewModel.isPro.collectAsState()
     val dailyStore = remember { DailyProCardStore(context) }
+    val currentUserId = UserPrefs.getUserId(context).orEmpty()
+
+    // ---- Smart match preference persistence ----
+    // Stores the user's chosen age/gender preference so the preference dialog
+    // only needs to be shown once, not on every single "Find nearby people" tap.
+    val smartPrefsStore = remember {
+        context.getSharedPreferences("juttela_smart_prefs", android.content.Context.MODE_PRIVATE)
+    }
+
+    // FIXED: AgePreference is a data class { min: Int, max: Int }, not an enum,
+    // so it has no .name / .valueOf(). Persist its two Int fields instead and
+    // reconstruct the object with AgePreference(min, max) when loading.
+    var savedAgePreference by remember {
+        mutableStateOf(
+            run {
+                val min = smartPrefsStore.getInt("age_preference_min", -1)
+                val max = smartPrefsStore.getInt("age_preference_max", -1)
+                if (min >= 0 && max >= 0) AgePreference(min = min, max = max) else null
+            }
+        )
+    }
+    var savedGenderPreference by remember {
+        mutableStateOf(smartPrefsStore.getString("gender_preference", null))
+    }
+
+    fun persistSmartPreference(agePreference: AgePreference, genderPreference: String) {
+        savedAgePreference = agePreference
+        savedGenderPreference = genderPreference
+        smartPrefsStore.edit()
+            .putInt("age_preference_min", agePreference.min)
+            .putInt("age_preference_max", agePreference.max)
+            .putString("gender_preference", genderPreference)
+            .apply()
+    }
 
 
     val deleteAccountViewModel: DeleteAccountViewModel = viewModel(
@@ -460,7 +495,9 @@ fun HomeScreen(navController: NavController) {
     }
 
     // ========== PRO "FIND MATE" ENTRY POINT ==========
-    // Shared logic used by the Pro button; loads the profile first, then opens preferences.
+    // Shared logic used by the Pro button; loads the profile first, then either
+    // reuses a previously saved age/gender preference (searching immediately)
+    // or opens the preference dialog the first time only.
     fun onProFindMateClicked() {
         val currentUserId = UserPrefs.getUserId(context)
         getProfileViewModel.getProfile(currentUserId.toString()) { success, message, profile ->
@@ -475,7 +512,20 @@ fun HomeScreen(navController: NavController) {
             }
 
             selectedProfile = profile
-            showPreferenceDialog = true
+
+            val age = savedAgePreference
+            val gender = savedGenderPreference
+
+            if (age != null && gender != null) {
+                // Preference already chosen once before — skip the dialog and search right away.
+                onSmartMatchClicked(
+                    profile = profile,
+                    agePreference = age,
+                    genderPreference = gender
+                )
+            } else {
+                showPreferenceDialog = true
+            }
         }
     }
 
@@ -630,6 +680,46 @@ fun HomeScreen(navController: NavController) {
                     enabled = !isBusyFinding,
                     onClick = { onProFindMateClicked() }
                 )
+
+                // Preference was already picked once — let the user change it
+                // later without forcing the dialog on every search. Styled as a
+                // small, low-emphasis chip (outline + icon, content-sized width)
+                // so it reads as a secondary action and never competes visually
+                // with the primary gold "Find nearby people" button above it.
+                if (savedAgePreference != null && savedGenderPreference != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .border(
+                                    width = 1.dp,
+                                    color = Color(0xFFE0A93B).copy(alpha = 0.5f),
+                                    shape = RoundedCornerShape(20.dp)
+                                )
+                                .clickable { showPreferenceDialog = true }
+                                .padding(horizontal = 14.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Edit,
+                                contentDescription = "Edit preferences",
+                                tint = Color(0xFF9A6A1E),
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Change match preferences",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color(0xFF9A6A1E)
+                            )
+                        }
+                    }
+                }
             } else {
                 val limitReached = remainingFinds <= 0
 
@@ -691,24 +781,49 @@ fun HomeScreen(navController: NavController) {
             }
 
             Spacer(modifier = Modifier.height(10.dp))
-            PopularNearYou(
-                onActivityClick = { item ->
-                    activity = item.title
-                }
-            )
+            if (
+                currentUserId.isNotBlank() &&
+                latitude != null &&
+                longitude != null
+            ) {
+                PopularNearYou(
+                    userId = currentUserId,
+                    longitude = longitude!!,
+                    latitude = latitude!!,
+                    onActivityClick = { nearby ->
+                        activity = nearby.activity
+                    }
+                )
+            } else {
+                Text(
+                    text = "Popular near you",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Black
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Getting your location...",
+                    fontSize = 13.sp,
+                    color = Color.Gray
+                )
+            }
         }
 
         LaunchedEffect(isPro) {
-            if (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    !isPro && dailyStore.shouldShowToday()
-                } else {
-                    TODO("VERSION.SDK_INT < O")
-                }
-            ) {
+            // FIXED: the old code called TODO() when running below API 26, which
+            // throws NotImplementedError and crashes the app. @RequiresApi is only
+            // a lint hint, not a runtime guard, so this branch was a real crash risk.
+            // Now it safely resolves to "don't show the bubble" on older devices instead.
+            val shouldShowBubble = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                !isPro && dailyStore.shouldShowToday()
+            } else {
+                false
+            }
+
+            if (shouldShowBubble) {
                 showLiveBubble = true
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    dailyStore.markShownToday()
-                }
+                dailyStore.markShownToday()
             } else {
                 showLiveBubble = false
             }
@@ -829,6 +944,7 @@ fun HomeScreen(navController: NavController) {
                 onDismiss = { showPreferenceDialog = false },
                 onSubmit = { agePreference, genderPreference ->
                     showPreferenceDialog = false
+                    persistSmartPreference(agePreference, genderPreference)
                     selectedProfile?.let { profile ->
                         onSmartMatchClicked(
                             profile = profile,

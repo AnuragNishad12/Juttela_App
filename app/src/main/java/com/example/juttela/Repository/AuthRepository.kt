@@ -26,8 +26,12 @@ import com.example.juttela.DataSource.Models.GoogleAuthResponse
 import com.example.juttela.DataSource.Models.LocationSessionResponse
 import com.example.juttela.DataSource.Models.LocationSessionStartRequest
 import com.example.juttela.DataSource.Models.MobileCheckResponse
+import com.example.juttela.DataSource.Models.NearbyActivitiesRequest
+import com.example.juttela.DataSource.Models.NearbyActivitiesResponse
 import com.example.juttela.DataSource.Models.RatingRequest
 import com.example.juttela.DataSource.Models.RatingResponse
+import com.example.juttela.DataSource.Models.RejectRequestBody
+import com.example.juttela.DataSource.Models.RejectRequestResponse
 import com.example.juttela.DataSource.Models.RequestAcceptedResponse
 import com.example.juttela.DataSource.Models.RequestModels
 import com.example.juttela.DataSource.Models.RequestResponse
@@ -180,6 +184,18 @@ class AuthRepository {
 
     suspend fun FeedBackRepo(request: FeedbackRequest) : FeedbackResponse{
         return RetrofitClient.api.FeedbackApi(request)
+    }
+
+    suspend fun PopularActivityNearBy(request : NearbyActivitiesRequest) : NearbyActivitiesResponse{
+        return RetrofitClient.api.PopularActivityNearBy(request)
+    }
+
+    suspend fun RejectRequestRepo(request : RejectRequestBody) : RejectRequestResponse{
+        return RetrofitClient.api.RejectRequestApi(request)
+    }
+
+    suspend fun RejectSmartRequestRepo(request : RejectRequestBody ) : RejectRequestResponse{
+        return RetrofitClient.api.RejectSmartRequest(request)
     }
 
 }

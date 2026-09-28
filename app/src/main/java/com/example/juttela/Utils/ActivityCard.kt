@@ -16,43 +16,39 @@ import com.example.juttela.DataSource.Models.ActivityItem
 @Composable
 fun ActivityCard(
     activity: ActivityItem,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit = {}
+    onClick: () -> Unit
 ) {
     Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(120.dp),
-        shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(1.dp, Color(0xFFE0E0E0)),
+        onClick = onClick,
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        onClick = onClick
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(110.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.SpaceBetween
+                .padding(16.dp),
+            verticalArrangement = Arrangement.Bottom
         ) {
-            Icon(
-                painter = painterResource(activity.icon),
-                contentDescription = activity.title,
-                tint = activity.iconColor,
-                modifier = Modifier.size(26.dp)
+            Text(
+                text = activity.title,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.Black
             )
-            Column {
-                Text(
-                    text = activity.title,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.Black
-                )
-                Text(
-                    text = "${activity.peopleNearby} people nearby",
-                    color = Color.Gray,
-                    fontSize = 13.sp
-                )
-            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = if (activity.peopleNearby > 0) {
+                    "${activity.peopleNearby} people nearby"
+                } else {
+                    "Be the first nearby"
+                },
+                fontSize = 13.sp,
+                color = Color.Gray
+            )
         }
     }
 }

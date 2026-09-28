@@ -1,6 +1,5 @@
 package com.example.juttela.Utils
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,6 +36,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.juttela.DataSource.Models.SmartGetRequest
+import kotlin.math.floor
+
+private val OrangeStar = Color(0xFFFF7B00)
+private val EmptyStar = Color(0xFFE0E0E0)
 
 @Composable
 fun SmartRequestCard(
@@ -101,12 +104,11 @@ fun SmartRequestCard(
                 )
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
-            Text(
-                text = "Rating ${request.rating} • ${request.feedbackCount} reviews",
-                fontSize = 11.sp,
-                color = Color.Gray
+            OrangeRatingRow(
+                rating = request.rating.toDouble(),
+                reviewCount = request.feedbackCount
             )
 
             Spacer(modifier = Modifier.height(6.dp))
@@ -116,7 +118,7 @@ fun SmartRequestCard(
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium,
                 color = if (request.status.equals("pending", true))
-                    Color(0xFFFF7B00) else Color.Gray
+                    OrangeStar else Color.Gray
             )
 
             Spacer(modifier = Modifier.height(14.dp))
@@ -148,7 +150,7 @@ fun SmartRequestCard(
                         .height(42.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFFF7B00),
+                        containerColor = OrangeStar,
                         contentColor = Color.White
                     )
                 ) {
@@ -156,7 +158,7 @@ fun SmartRequestCard(
                         CircularProgressIndicator(
                             color = Color.White,
                             strokeWidth = 2.dp,
-                            modifier = Modifier.height(18.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     } else {
                         Text("Accept", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
@@ -165,13 +167,46 @@ fun SmartRequestCard(
             }
         }
     }
-
-
 }
 
-// ============================================================
-// MATCH SCORE BADGE — pill with gradient tint, icon, and score/label
-// ============================================================
+@Composable
+private fun OrangeRatingRow(
+    rating: Double,
+    reviewCount: Int
+) {
+    val fullStars = floor(rating).toInt().coerceIn(0, 5)
+    val hasHalf = (rating - fullStars) >= 0.5 && fullStars < 5
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        repeat(5) { index ->
+            val filled = index < fullStars || (hasHalf && index == fullStars)
+            Icon(
+                imageVector = Icons.Filled.Star,
+                contentDescription = null,
+                tint = if (index < fullStars) OrangeStar
+                else if (hasHalf && index == fullStars) OrangeStar.copy(alpha = 0.45f)
+                else EmptyStar,
+                modifier = Modifier.size(14.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.width(6.dp))
+
+        Text(
+            text = String.format("%.1f", rating),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            color = Color.DarkGray
+        )
+
+        Text(
+            text = " • $reviewCount reviews",
+            fontSize = 11.sp,
+            color = Color.Gray
+        )
+    }
+}
+
 @Composable
 private fun MatchScoreBadge(score: Int) {
     val label: String
@@ -210,7 +245,7 @@ private fun MatchScoreBadge(score: Int) {
 
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))   // was 20.dp — square-ish corners now
+            .clip(RoundedCornerShape(8.dp))
             .background(gradient)
             .padding(horizontal = 10.dp, vertical = 6.dp)
     ) {

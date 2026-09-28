@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -125,23 +126,23 @@ fun HistoryScreen(
             }
         }
 
-//        Button(
-//            onClick = { navController.navigate("subscription") },
-//            modifier = Modifier
-//                .fillMaxWidth()
-//                .navigationBarsPadding()
-//                .padding(horizontal = 20.dp, vertical = 16.dp)
-//                .height(52.dp),
-//            shape = RoundedCornerShape(16.dp),
-//            colors = ButtonDefaults.buttonColors(containerColor = JuttelaOrange)
-//        ) {
-//            Text(
-//                text = "Juttela Pro",
-//                fontSize = 15.sp,
-//                fontWeight = FontWeight.Bold,
-//                color = Color.White
-//            )
-//        }
+        Button(
+            onClick = { navController.navigate("subscription") },
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 16.dp)
+                .height(52.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = JuttelaOrange)
+        ) {
+            Text(
+                text = "Juttela Pro",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+        }
     }
 }
 

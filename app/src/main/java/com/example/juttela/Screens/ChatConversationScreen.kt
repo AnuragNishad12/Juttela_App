@@ -48,7 +48,6 @@ import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.outlined.Chat
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -847,7 +846,7 @@ fun ChatConversationScreen(
                         text = "Chat",
                         selected = selectedAction == "chat",
                         selectedIcon = Icons.AutoMirrored.Filled.Chat,
-                        unselectedIcon = Icons.Outlined.Chat,
+                        unselectedIcon = Icons.AutoMirrored.Filled.Chat,
                         modifier = Modifier.weight(1f),
                         onClick = {
                             selectedAction = if (selectedAction == "chat") null else "chat"

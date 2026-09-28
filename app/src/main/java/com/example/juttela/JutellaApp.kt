@@ -31,6 +31,10 @@ class JutellaApp : Application() {
         // -------------------------
         Purchases.logLevel = com.revenuecat.purchases.LogLevel.DEBUG
 
+//        test_OfmhpOQmVnqZPklDbMnuHztmeeM
+
+//        goog_GKbYtQPIpZjuiGhyumvBZhpJPGI
+
         Purchases.configure(
             PurchasesConfiguration.Builder(
                 this,
