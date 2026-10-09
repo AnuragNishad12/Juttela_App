@@ -24,6 +24,8 @@ import com.example.juttela.DataSource.Models.GoogleAuthRequest
 import com.example.juttela.DataSource.Models.GoogleAuthResponse
 import com.example.juttela.DataSource.Models.LocationSessionResponse
 import com.example.juttela.DataSource.Models.LocationSessionStartRequest
+import com.example.juttela.DataSource.Models.LoginRequest
+import com.example.juttela.DataSource.Models.LoginResponse
 import com.example.juttela.DataSource.Models.MobileCheckResponse
 import com.example.juttela.DataSource.Models.NearbyActivitiesRequest
 import com.example.juttela.DataSource.Models.NearbyActivitiesResponse
@@ -215,6 +217,12 @@ interface ApiService {
     suspend fun RejectSmartRequest(
         @Body request : RejectRequestBody
     ): RejectRequestResponse
+
+    @POST("api/users/login")
+    suspend fun LoginApi(
+        @Body request: LoginRequest
+    ) : LoginResponse
+
 
 
 

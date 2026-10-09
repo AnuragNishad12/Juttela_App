@@ -1,6 +1,8 @@
 package com.example.juttela
 
 import android.net.Uri
+import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
@@ -21,6 +23,7 @@ import com.example.juttela.Screens.Subscription.SubscriptionScreen
 import com.example.juttela.UI.HistoryScreen
 import com.example.juttela.Utils.GoogleAuthManager
 
+@RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
@@ -53,7 +56,7 @@ fun AppNavigation() {
         }
 
         composable("login") {
-            LoginScreen()
+            LoginScreen(navController = navController)
         }
 
         composable("main") {

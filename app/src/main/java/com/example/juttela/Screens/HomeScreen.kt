@@ -1,5 +1,61 @@
 package com.example.juttela.Screens
 
+
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+
+import androidx.compose.foundation.verticalScroll
+
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Face
+import androidx.compose.material.icons.filled.FormatQuote
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.WorkspacePremium
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import android.Manifest
 import android.app.Application
 import android.content.pm.PackageManager
@@ -70,7 +126,9 @@ import com.example.juttela.Utils.DailyProCardStore
 import com.example.juttela.Utils.DeleteAccountConfirmationDialog
 import com.example.juttela.Utils.DraggableProSubscriptionCard
 import com.example.juttela.Utils.LiveDealCard
+import com.example.juttela.Utils.LocationRow
 import com.example.juttela.Utils.NearbyMatchesDialog
+import com.example.juttela.Utils.PopularNearYouPlaceholder
 import com.example.juttela.Utils.SmartNearbyMatchesDialog
 import com.example.juttela.Utils.SmartPreferenceDialog
 import com.example.juttela.Utils.UserPrefs
@@ -87,6 +145,15 @@ import com.example.juttela.components.ActivityDropdown
 import com.example.juttela.components.PopularNearYou
 import com.google.android.gms.location.LocationServices
 import kotlinx.coroutines.launch
+
+
+private val Orange = Color(0xFFFF7B00)
+private val OrangeSoft = Color(0xFFFFF1E0)
+private val Gold = Color(0xFFFFD76A)
+private val GoldDeep = Color(0xFFE8842B)
+private val ScreenBg = Color(0xFFF7F7F9)
+private val TextDark = Color(0xFF1A1A1A)
+private val TextMuted = Color(0xFF8A8A8E)
 
 
 @RequiresApi(Build.VERSION_CODES.O)
@@ -613,21 +680,22 @@ fun HomeScreen(navController: NavController) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.juttelalocation),
-                            contentDescription = "Location",
-                            tint = Color.Gray,
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Delhi, India",
-                            fontSize = 16.sp,
-                            color = Color.Gray,
-                            fontWeight = FontWeight.Black
-                        )
-                    }
+//                    Row(verticalAlignment = Alignment.CenterVertically) {
+//                        Icon(
+//                            painter = painterResource(id = R.drawable.juttelalocation),
+//                            contentDescription = "Location",
+//                            tint = Color.Gray,
+//                            modifier = Modifier.size(22.dp)
+//                        )
+//                        Spacer(modifier = Modifier.width(8.dp))
+//                        Text(
+//                            text = "Delhi, India",
+//                            fontSize = 16.sp,
+//                            color = Color.Gray,
+//                            fontWeight = FontWeight.Black
+//                        )
+//                    }
+                    LocationRow()
                 }
             }
 
@@ -795,26 +863,14 @@ fun HomeScreen(navController: NavController) {
                     }
                 )
             } else {
-                Text(
-                    text = "Popular near you",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.Black
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Getting your location...",
-                    fontSize = 13.sp,
-                    color = Color.Gray
+                PopularNearYouPlaceholder(
+                    onActivityClick = { title -> activity = title }
                 )
             }
         }
 
         LaunchedEffect(isPro) {
-            // FIXED: the old code called TODO() when running below API 26, which
-            // throws NotImplementedError and crashes the app. @RequiresApi is only
-            // a lint hint, not a runtime guard, so this branch was a real crash risk.
-            // Now it safely resolves to "don't show the bubble" on older devices instead.
+
             val shouldShowBubble = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 !isPro && dailyStore.shouldShowToday()
             } else {
@@ -857,16 +913,20 @@ fun HomeScreen(navController: NavController) {
         if (showProfileScreen && currentProfile != null) {
             ProfileDetailsScreen(
                 profile = currentProfile!!,
+                isPro = isPro,
                 onBack = { showProfileScreen = false },
-                onLogout = {
-
-
-
+                onUpgradeClick = {
+                    showProfileScreen = false
+                    navController.navigate("subscription")
                 },
-                onDeleteAccount = {
-                    showDeleteDialog = true
-//                    Toast.makeText(context, "Delete Account clicked", Toast.LENGTH_SHORT).show()
-                }
+                onLogout = {
+                    UserPrefs.clear(context)
+                    showProfileScreen = false
+                    navController.navigate("signup") {
+                        popUpTo(0) { inclusive = true }
+                    }
+                },
+                onDeleteAccount = { showDeleteDialog = true }
             )
         }
 
@@ -1081,8 +1141,12 @@ fun ProfileDetailsScreen(
     profile: ProfileDataNew,
     onBack: () -> Unit,
     onLogout: () -> Unit,
-    onDeleteAccount: () -> Unit
+    onDeleteAccount: () -> Unit,
+    isPro: Boolean = false,
+    onUpgradeClick: () -> Unit = {}
 ) {
+    var showLogoutDialog by remember { mutableStateOf(false) }
+
     val interests = profile.interests ?: emptyList()
     val ratingAverage = profile.rating?.average ?: 0.0
     val ratingCount = profile.feedbacks?.count?.takeIf { it > 0 }
@@ -1096,140 +1160,173 @@ fun ProfileDetailsScreen(
         return value
             .replace("_", " ")
             .split(" ")
-            .joinToString(" ") { word ->
-                word.replaceFirstChar { it.uppercase() }
-            }
+            .joinToString(" ") { word -> word.replaceFirstChar { it.uppercase() } }
     }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF8F8F8))
-            .statusBarsPadding()
+            .background(ScreenBg)
     ) {
+        // Decorative gradient behind the header
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(260.dp)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Color(0xFFFFE2BF), ScreenBg)
+                    )
+                )
+        )
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .statusBarsPadding()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 18.dp, vertical = 14.dp)
+                .padding(horizontal = 18.dp, vertical = 10.dp)
         ) {
+            // ---------- Top bar ----------
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onBack) {
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.85f))
+                ) {
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = "Close",
-                        tint = Color.Black,
+                        tint = TextDark,
                         modifier = Modifier.size(20.dp)
                     )
                 }
+                Spacer(modifier = Modifier.width(12.dp))
                 Text(
                     text = "My Profile",
-                    fontSize = 17.sp,
+                    fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.Black
+                    color = TextDark
                 )
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(22.dp))
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color(0xFFFFF1E0), Color.White)
-                        )
-                    )
-                    .padding(vertical = 22.dp, horizontal = 16.dp)
+            // ---------- Header: avatar, name, email ----------
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(88.dp)
-                            .clip(CircleShape)
-                            .background(Color.White)
-                            .border(2.5.dp, Color(0xFFFF7B00), CircleShape)
-                            .padding(3.dp)
-                    ) {
-                        AsyncImage(
-                            model = profile.profileImageUrl,
-                            contentDescription = "Profile Image",
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clip(CircleShape),
-                            contentScale = ContentScale.Crop,
-                            placeholder = painterResource(id = R.drawable.juttelaprofile),
-                            error = painterResource(id = R.drawable.juttelaprofile)
+                Box(
+                    modifier = Modifier
+                        .size(112.dp)
+                        .shadow(10.dp, CircleShape, spotColor = Orange.copy(alpha = 0.4f))
+                        .clip(CircleShape)
+                        .background(
+                            Brush.linearGradient(listOf(Gold, Orange, GoldDeep))
                         )
-                    }
+                        .padding(4.dp)
+                        .clip(CircleShape)
+                        .background(Color.White)
+                        .padding(3.dp)
+                ) {
+                    AsyncImage(
+                        model = profile.profileImageUrl,
+                        contentDescription = "Profile Image",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(CircleShape),
+                        contentScale = ContentScale.Crop,
+                        placeholder = painterResource(id = R.drawable.juttelaprofile),
+                        error = painterResource(id = R.drawable.juttelaprofile)
+                    )
+                }
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = profile.name ?: "No Name",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.Black
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = TextDark
                     )
-
-                    if (!profile.email.isNullOrBlank()) {
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = profile.email,
-                            fontSize = 12.sp,
-                            color = Color.Gray
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ProfileStatPill(
-                            text = if (ratingCount > 0) {
-                                "★ $ratingAverage"
-                            } else {
-                                "★ New"
-                            }
-                        )
-                        ProfileStatPill(
-                            text = if (ratingCount > 0) {
-                                "$ratingCount reviews"
-                            } else {
-                                "No reviews yet"
-                            }
+                    if (isPro) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(
+                            imageVector = Icons.Default.WorkspacePremium,
+                            contentDescription = "Pro member",
+                            tint = GoldDeep,
+                            modifier = Modifier.size(22.dp)
                         )
                     }
                 }
+
+                if (!profile.email.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = profile.email,
+                        fontSize = 13.sp,
+                        color = TextMuted
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
-            Column(
+            // ---------- Stats row ----------
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp))
+                    .shadow(6.dp, RoundedCornerShape(20.dp), spotColor = Color.Black.copy(alpha = 0.08f))
+                    .clip(RoundedCornerShape(20.dp))
                     .background(Color.White)
-                    .padding(16.dp)
+                    .padding(vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Interests",
-                    fontSize = 11.sp,
-                    color = Color.Gray
+                ProfileStat(
+                    modifier = Modifier.weight(1f),
+                    value = if (ratingCount > 0) String.format("%.1f", ratingAverage) else "New",
+                    label = "Rating",
+                    showStar = ratingCount > 0
                 )
-                Spacer(modifier = Modifier.height(10.dp))
+                StatDivider()
+                ProfileStat(
+                    modifier = Modifier.weight(1f),
+                    value = ratingCount.toString(),
+                    label = "Reviews"
+                )
+                StatDivider()
+                ProfileStat(
+                    modifier = Modifier.weight(1f),
+                    value = interests.size.toString(),
+                    label = "Interests"
+                )
+            }
 
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // ---------- Juttela Pro card ----------
+            if (isPro) {
+                ProMemberCard()
+            } else {
+                ProUpgradeCard(onUpgradeClick = onUpgradeClick)
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // ---------- Interests ----------
+            SectionCard(title = "Interests") {
                 if (interests.isEmpty()) {
                     Text(
                         text = "No interests added yet",
                         fontSize = 13.sp,
-                        color = Color.Gray
+                        color = TextMuted
                     )
                 } else {
                     FlowRow(
@@ -1240,14 +1337,19 @@ fun ProfileDetailsScreen(
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(20.dp))
-                                    .background(Color(0xFFFFF1E0))
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                                    .background(OrangeSoft)
+                                    .border(
+                                        1.dp,
+                                        Orange.copy(alpha = 0.25f),
+                                        RoundedCornerShape(20.dp)
+                                    )
+                                    .padding(horizontal = 14.dp, vertical = 7.dp)
                             ) {
                                 Text(
                                     text = formatInterest(interest),
                                     fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = Color(0xFFFF7B00)
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Orange
                                 )
                             }
                         }
@@ -1257,10 +1359,12 @@ fun ProfileDetailsScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
+            // ---------- Personal info ----------
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp))
+                    .shadow(4.dp, RoundedCornerShape(20.dp), spotColor = Color.Black.copy(alpha = 0.06f))
+                    .clip(RoundedCornerShape(20.dp))
                     .background(Color.White)
                     .padding(vertical = 6.dp)
             ) {
@@ -1273,37 +1377,25 @@ fun ProfileDetailsScreen(
                 ProfileInfoRow(
                     icon = Icons.Default.AccountCircle,
                     label = "Gender",
-                    value = profile.gender?.replaceFirstChar { it.uppercase() } ?: "Not set"
+                    value = profile.gender?.trim()?.replaceFirstChar { it.uppercase() } ?: "Not set"
                 )
                 ProfileDivider()
                 ProfileInfoRow(
                     icon = Icons.Default.Info,
                     label = "About",
-                    value = profile.about ?: "No bio yet"
+                    value = profile.about?.trim()?.takeIf { it.isNotBlank() } ?: "No bio yet"
                 )
             }
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(Color.White)
-                    .padding(16.dp)
-            ) {
-                Text(
-                    text = "Feedback",
-                    fontSize = 11.sp,
-                    color = Color.Gray
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-
+            // ---------- Feedback ----------
+            SectionCard(title = "Feedback") {
                 if (feedbackMessages.isEmpty()) {
                     Text(
                         text = "No feedback yet",
                         fontSize = 13.sp,
-                        color = Color.Gray
+                        color = TextMuted
                     )
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1314,50 +1406,414 @@ fun ProfileDetailsScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(26.dp))
 
-            OutlinedButton(
-                onClick = onDeleteAccount,
+            // ---------- Log out ----------
+            Button(
+                onClick = { showLogoutDialog = true },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = Color.Red
-                ),
-                border = BorderStroke(1.2.dp, Color.Red.copy(alpha = 0.5f))
+                    .height(52.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = TextDark,
+                    contentColor = Color.White
+                )
             ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Logout,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    text = "Delete Account",
-                    fontSize = 14.sp,
+                    text = "Log Out",
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold
                 )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // ---------- Delete account ----------
+            OutlinedButton(
+                onClick = onDeleteAccount,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFD93025)),
+                border = BorderStroke(1.2.dp, Color(0xFFD93025).copy(alpha = 0.5f))
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "Delete Account",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(28.dp))
+        }
+    }
+
+    // ---------- Logout confirmation ----------
+    if (showLogoutDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutDialog = false },
+            shape = RoundedCornerShape(20.dp),
+            containerColor = Color.White,
+            title = {
+                Text(
+                    text = "Log out?",
+                    fontWeight = FontWeight.Bold,
+                    color = TextDark
+                )
+            },
+            text = {
+                Text(
+                    text = "You'll need to sign in again to find people nearby.",
+                    color = TextMuted,
+                    fontSize = 14.sp
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showLogoutDialog = false
+                        onLogout()
+                    }
+                ) {
+                    Text("Log Out", color = Orange, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogoutDialog = false }) {
+                    Text("Cancel", color = TextMuted)
+                }
+            }
+        )
+    }
+}
+
+// ============================================================
+// PRO CARDS
+// ============================================================
+@Composable
+private fun ProUpgradeCard(onUpgradeClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(
+                12.dp,
+                RoundedCornerShape(22.dp),
+                ambientColor = GoldDeep.copy(alpha = 0.4f),
+                spotColor = GoldDeep.copy(alpha = 0.4f)
+            )
+            .clip(RoundedCornerShape(22.dp))
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(Color(0xFF1E1A14), Color(0xFF3B2A0F))
+                )
+            )
+            .border(
+                1.dp,
+                Brush.linearGradient(listOf(Gold.copy(alpha = 0.8f), GoldDeep.copy(alpha = 0.3f))),
+                RoundedCornerShape(22.dp)
+            )
+            .clickable { onUpgradeClick() }
+            .padding(18.dp)
+    ) {
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(Brush.linearGradient(listOf(Gold, GoldDeep))),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.WorkspacePremium,
+                        contentDescription = null,
+                        tint = Color(0xFF3D2200),
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        text = "Juttela Pro",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Gold
+                    )
+                    Text(
+                        text = "Meet the right people, faster",
+                        fontSize = 12.sp,
+                        color = Color.White.copy(alpha = 0.7f)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            ProBenefit("Unlimited daily finds")
+            Spacer(modifier = Modifier.height(6.dp))
+            ProBenefit("Smart age & gender matching")
+            Spacer(modifier = Modifier.height(6.dp))
+            ProBenefit("No ads, priority matches")
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Brush.linearGradient(listOf(Gold, Color(0xFFF7A93B), GoldDeep))),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Upgrade to Pro",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF3D2200)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = Color(0xFF3D2200),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
         }
     }
 }
 
+@Composable
+private fun ProBenefit(text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            imageVector = Icons.Default.CheckCircle,
+            contentDescription = null,
+            tint = Gold,
+            modifier = Modifier.size(16.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = text,
+            fontSize = 13.sp,
+            color = Color.White.copy(alpha = 0.9f)
+        )
+    }
+}
 
+@Composable
+private fun ProMemberCard() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(
+                10.dp,
+                RoundedCornerShape(20.dp),
+                ambientColor = GoldDeep.copy(alpha = 0.4f),
+                spotColor = GoldDeep.copy(alpha = 0.4f)
+            )
+            .clip(RoundedCornerShape(20.dp))
+            .background(Brush.linearGradient(listOf(Gold, Color(0xFFF7A93B), GoldDeep)))
+            .padding(horizontal = 18.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Default.WorkspacePremium,
+            contentDescription = null,
+            tint = Color(0xFF3D2200),
+            modifier = Modifier.size(32.dp)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column {
+            Text(
+                text = "Juttela Pro Member",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color(0xFF3D2200)
+            )
+            Text(
+                text = "Unlimited finds & smart matching unlocked",
+                fontSize = 12.sp,
+                color = Color(0xFF3D2200).copy(alpha = 0.8f)
+            )
+        }
+    }
+}
+
+// ============================================================
+// REUSABLE PIECES
+// ============================================================
+@Composable
+private fun SectionCard(
+    title: String,
+    content: @Composable () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(4.dp, RoundedCornerShape(20.dp), spotColor = Color.Black.copy(alpha = 0.06f))
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color.White)
+            .padding(16.dp)
+    ) {
+        Text(
+            text = title,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            color = TextDark
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        content()
+    }
+}
+
+@Composable
+private fun ProfileStat(
+    modifier: Modifier = Modifier,
+    value: String,
+    label: String,
+    showStar: Boolean = false
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = value,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = TextDark
+            )
+            if (showStar) {
+                Spacer(modifier = Modifier.width(3.dp))
+                Icon(
+                    imageVector = Icons.Default.Star,
+                    contentDescription = null,
+                    tint = Color(0xFFFFB400),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = label,
+            fontSize = 12.sp,
+            color = TextMuted
+        )
+    }
+}
+
+@Composable
+private fun StatDivider() {
+    Box(
+        modifier = Modifier
+            .width(1.dp)
+            .height(32.dp)
+            .background(Color(0xFFEDEDED))
+    )
+}
 
 @Composable
 private fun FeedbackMessageCard(message: String) {
-    Box(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .background(Color(0xFFFFF8F1))
-            .padding(horizontal = 14.dp, vertical = 12.dp)
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.Top
     ) {
+        Icon(
+            imageVector = Icons.Default.FormatQuote,
+            contentDescription = null,
+            tint = Orange.copy(alpha = 0.7f),
+            modifier = Modifier.size(22.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
         Text(
-            text = message,
+            text = message.trim(),
             fontSize = 13.sp,
             color = Color(0xFF333333),
-            lineHeight = 18.sp
+            lineHeight = 19.sp
         )
     }
 }
+
+@Composable
+private fun ProfileInfoRow(
+    icon: ImageVector,
+    label: String,
+    value: String
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .clip(CircleShape)
+                .background(OrangeSoft),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = Orange,
+                modifier = Modifier.size(19.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.width(14.dp))
+
+        Column {
+            Text(
+                text = label,
+                fontSize = 11.sp,
+                color = TextMuted
+            )
+            Spacer(modifier = Modifier.height(1.dp))
+            Text(
+                text = value,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = TextDark
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProfileDivider() {
+    HorizontalDivider(
+        modifier = Modifier.padding(start = 68.dp),
+        thickness = 1.dp,
+        color = Color(0xFFF1F1F1)
+    )
+}
+
+
+
+
 
 @Composable
 private fun ProfileStatPill(text: String) {
@@ -1376,65 +1832,10 @@ private fun ProfileStatPill(text: String) {
     }
 }
 
-@Composable
-private fun ProfileInfoRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    value: String
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(34.dp)
-                .clip(CircleShape)
-                .background(Color(0xFFFFF1E0)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = Color(0xFFFF7B00),
-                modifier = Modifier.size(18.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        Column {
-            Text(
-                text = label,
-                fontSize = 11.sp,
-                color = Color.Gray
-            )
-            Spacer(modifier = Modifier.height(1.dp))
-            Text(
-                text = value,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color.Black
-            )
-        }
-    }
-}
-
-@Composable
-private fun ProfileDivider() {
-    HorizontalDivider(
-        modifier = Modifier.padding(start = 62.dp),
-        thickness = 1.dp,
-        color = Color(0xFFF0F0F0)
-    )
-}
 
 
-// ============================================================
-// COMPLETE PROFILE DIALOG — updated with real Cloudinary upload
-// ============================================================
+
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CompleteProfileDialog(

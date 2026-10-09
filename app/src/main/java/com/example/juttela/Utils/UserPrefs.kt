@@ -1,5 +1,6 @@
 package com.example.juttela.Utils
 
+import android.app.Application
 import android.content.Context
 
 object UserPrefs {
@@ -7,6 +8,7 @@ object UserPrefs {
     private const val KEY_USER_ID = "user_id"
     private const val KEY_USER_NAME = "user_name"
     private const val KEY_PROFILE_IMAGE_URL = "profile_image_url"
+
 
     fun saveUserId(context: Context, userId: String) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

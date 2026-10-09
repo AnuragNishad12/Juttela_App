@@ -1,7 +1,5 @@
 package com.example.juttela.ViewModels
 
-
-
 import android.app.Application
 import android.util.Log
 import androidx.compose.runtime.getValue
@@ -12,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.juttela.DataSource.Models.GetProfileRequest
 import com.example.juttela.DataSource.Models.ProfileDataNew
 import com.example.juttela.Repository.AuthRepository
+import com.example.juttela.Utils.UserPrefs
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 
@@ -36,21 +35,24 @@ class GetProfileViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             state = state.copy(loading = true)
             try {
-                Log.d(
-                    "GetProfileViewModel",
-                    "Getting profile: userId=$userId"
-                )
+                Log.d("GetProfileViewModel", "Getting profile: userId=$userId")
 
-                val response = repository.GetProfileRepo(
-                    GetProfileRequest(
-                        userId = userId
-                    )
-                )
+                val response = repository.GetProfileRepo(GetProfileRequest(userId = userId))
 
                 Log.d(
                     "GetProfileViewModel",
                     "Success: ${response.success}, message: ${response.message}"
                 )
+
+                // Only save the picture if this is the logged-in user's own profile
+                val context = getApplication<Application>()
+                val savedUserId = UserPrefs.getUserId(context)
+                val isMine = userId == savedUserId
+                Log.d("GetProfileViewModel", "userId=$userId, savedId=$savedUserId, isMine=$isMine")
+
+                if (response.success && isMine) {
+                    saveProfileImageIfEmpty(response.data?.profileImageUrl)
+                }
 
                 state = GetProfileState(
                     loading = false,
@@ -74,11 +76,29 @@ class GetProfileViewModel(application: Application) : AndroidViewModel(applicati
                 state = GetProfileState(
                     loading = false,
                     success = false,
-                    message = errorMessage ?: "Unknown Error"
+                    message = errorMessage
                 )
 
-                onResult(false, errorMessage ?: "Unknown Error", null)
+                onResult(false, errorMessage, null)
             }
+        }
+    }
+
+    private fun saveProfileImageIfEmpty(profileImageUrl: String?) {
+        Log.d("GetProfileViewModel", "Incoming image url: $profileImageUrl")
+
+        if (profileImageUrl.isNullOrBlank()) {
+            Log.d("GetProfileViewModel", "Skipped: incoming url is empty")
+            return
+        }
+
+        val context = getApplication<Application>()
+        val saved = UserPrefs.getProfileImageUrl(context)
+        Log.d("GetProfileViewModel", "Already saved: $saved")
+
+        if (saved.isNullOrBlank()) {
+            UserPrefs.saveProfileImageUrl(context, profileImageUrl)
+            Log.d("GetProfileViewModel", "Saved: ${UserPrefs.getProfileImageUrl(context)}")
         }
     }
 }

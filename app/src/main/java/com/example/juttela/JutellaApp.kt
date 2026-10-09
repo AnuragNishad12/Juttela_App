@@ -38,7 +38,7 @@ class JutellaApp : Application() {
         Purchases.configure(
             PurchasesConfiguration.Builder(
                 this,
-                "test_OfmhpOQmVnqZPklDbMnuHztmeeM"
+                "goog_GKbYtQPIpZjuiGhyumvBZhpJPGI"
             ).build()
         )
     }

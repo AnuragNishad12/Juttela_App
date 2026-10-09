@@ -126,23 +126,22 @@ fun HistoryScreen(
             }
         }
 
-        Button(
-            onClick = { navController.navigate("subscription") },
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 16.dp)
-                .height(52.dp),
-            shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = JuttelaOrange)
-        ) {
-            Text(
-                text = "Juttela Pro",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-        }
+//        Button(
+//            onClick = { navController.navigate("subscription") },
+//            modifier = Modifier
+//                .fillMaxWidth()
+//                .navigationBarsPadding()
+//                .padding(horizontal = 20.dp, vertical = 16.dp)
+//                .height(52.dp),
+//            shape = RoundedCornerShape(16.dp),
+//            colo//                color = Color.White
+////            )rs = ButtonDefaults.buttonColors(containerColor = JuttelaOrange)
+//        ) {
+//            Text(
+//                text = "Juttela Pro",
+//                fontSize = 15.sp,
+//                fontWeight = FontWeight.Bold,
+//        }
     }
 }
 
