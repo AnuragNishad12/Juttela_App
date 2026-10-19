@@ -1,8 +1,11 @@
 package com.example.juttela.DataSource.Apis
 
 import com.example.juttela.DataSource.Models.AcceptUsersModel
+import com.example.juttela.DataSource.Models.ActivityRequest
+import com.example.juttela.DataSource.Models.ActivityResponse
 import com.example.juttela.DataSource.Models.AddUserToSessionRequest
 import com.example.juttela.DataSource.Models.AddUserToSessionResponse
+import com.example.juttela.DataSource.Models.ApprovalModel
 import com.example.juttela.DataSource.Models.ArrivalsResponse
 import com.example.juttela.DataSource.Models.CancelSessionResponse
 import com.example.juttela.DataSource.Models.ConnectionsRequest
@@ -12,6 +15,7 @@ import com.example.juttela.DataSource.Models.FeedbackRequest
 import com.example.juttela.DataSource.Models.FeedbackResponse
 import com.example.juttela.DataSource.Models.GeoAddRequestModel
 import com.example.juttela.DataSource.Models.GeoAddResponseModel
+import com.example.juttela.DataSource.Models.GetAllActivity
 import com.example.juttela.DataSource.Models.GetIdRequest
 import com.example.juttela.DataSource.Models.GetMessagesRequest
 import com.example.juttela.DataSource.Models.GetMessagesResponse
@@ -54,6 +58,7 @@ import com.example.juttela.DataSource.Models.UpdateProfileResponse
 import com.example.juttela.DataSource.Models.UpdateSessionLocationRequest
 import com.example.juttela.DataSource.Models.UpdateSessionLocationResponse
 import com.example.juttela.DataSource.Models.UserIdRequest
+import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
@@ -223,7 +228,20 @@ interface ApiService {
         @Body request: LoginRequest
     ) : LoginResponse
 
+    @GET("api/users/approval/{userId}")
+    suspend fun getUserApproval(
+        @Path("userId") userId: String
+    ): Response<ApprovalModel>
 
 
+
+    @POST("api/users/createActivity")
+    suspend fun createActivity(
+        @Body request: ActivityRequest
+    ): ActivityResponse
+
+
+    @GET("api/users/getActivity")
+    suspend fun getallactivity(): GetAllActivity
 
 }

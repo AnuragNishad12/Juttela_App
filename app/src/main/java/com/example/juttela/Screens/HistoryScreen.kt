@@ -8,7 +8,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -18,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import com.example.juttela.Screens.SelfieCaptureScreen
 import com.example.juttela.Utils.ArrivalCard
 import com.example.juttela.Utils.UserPrefs
 import com.example.juttela.ViewModels.ArrivalsViewModel
@@ -36,6 +40,7 @@ fun HistoryScreen(
     val userId = remember { UserPrefs.getUserId(context) }
     val state = viewModel.state
     val arrivals = state.arrivals?.arrivals.orEmpty()
+    var showSelfieScreen by remember { mutableStateOf(false) }
 
     LaunchedEffect(userId) {
         if (!userId.isNullOrBlank()) {
@@ -126,21 +131,35 @@ fun HistoryScreen(
             }
         }
 
-//        Button(
-//            onClick = { navController.navigate("subscription") },
-//            modifier = Modifier
-//                .fillMaxWidth()
-//                .navigationBarsPadding()
-//                .padding(horizontal = 20.dp, vertical = 16.dp)
-//                .height(52.dp),
-//            shape = RoundedCornerShape(16.dp),
-//            colo//                color = Color.White
-////            )rs = ButtonDefaults.buttonColors(containerColor = JuttelaOrange)
-//        ) {
-//            Text(
-//                text = "Juttela Pro",
-//                fontSize = 15.sp,
-//                fontWeight = FontWeight.Bold,
+//        if (showSelfieScreen) {
+//          val userId =   UserPrefs.getUserId(context);
+//            if(userId!=null){
+//                SelfieCaptureScreen(
+//                    userId = userId.toString(),
+//                    onUploadSuccess = {selfieUrl, url ->
+//                        showSelfieScreen = false
+//                    },
+//                    onUploadFailed = {
+//                        showSelfieScreen = false
+//                    }
+//                )
+//            }
+//        } else {
+//            Button(
+//                onClick = { showSelfieScreen = true },
+//                modifier = Modifier
+//                    .fillMaxWidth()
+//                    .navigationBarsPadding()
+//                    .padding(horizontal = 20.dp, vertical = 16.dp)
+//                    .height(52.dp),
+//                shape = RoundedCornerShape(16.dp)
+//            ) {
+//                Text(
+//                    text = "Juttela Pro",
+//                    fontSize = 15.sp,
+//                    fontWeight = FontWeight.Bold
+//                )
+//            }
 //        }
     }
 }

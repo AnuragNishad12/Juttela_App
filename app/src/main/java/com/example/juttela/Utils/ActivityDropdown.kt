@@ -27,45 +27,31 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-
-val activityList = listOf(
-    "running", "walking", "cycling", "roller_skating", "skateboarding",
-    "yoga", "gym", "hiking", "rock_climbing", "swimming",
-    "football", "badminton", "basketball", "volleyball", "tennis",
-    "table_tennis", "cricket", "frisbee", "bowling", "billiards",
-    "coffee", "lunch", "dinner", "breakfast", "ice_cream",
-    "drinks", "sushi", "street_food", "dessert", "shopping",
-    "movies", "watch_series", "gaming", "board_games", "chess",
-    "karaoke", "theatre", "painting", "photography", "fishing",
-    "study", "coding", "book_club", "puzzle_solving", "coworking",
-    "conversation", "casual_chat", "make_friends", "meet_new_people", "dating",
-    "dog_walking", "sunrise_sunset", "local_events"
-)
-
-private fun String.toDisplayLabel(): String =
-    if (this.isBlank()) "" else this.replace("_", " ").replaceFirstChar { it.uppercase() }
+import com.example.juttela.DataSource.Models.Activity
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ActivityDropdown(
-    selectedActivity: String,
-    onActivitySelected: (String) -> Unit
+    activities: List<Activity>,               // Pass list from ViewModel here
+    selectedActivity: String,                 // selected key or label
+    onActivitySelected: (String) -> Unit      // returns the selected key
 ) {
     var expanded by remember { mutableStateOf(false) }
-    // The anchor field IS the search field now — this is what fixes typing,
-    // since ExposedDropdownMenu's popup is non-focusable and can't host a
-    // separate editable field inside it.
-    var query by remember { mutableStateOf(selectedActivity.toDisplayLabel()) }
+    var query by remember { mutableStateOf(selectedActivity) }
 
-    // Keep the field in sync if the selection changes from outside
-    // (e.g. tapping a "Popular near you" chip).
+    // Sync when selection changes from outside
     LaunchedEffect(selectedActivity) {
-        query = selectedActivity.toDisplayLabel()
+        query = activities.find { it.key == selectedActivity }?.label
+            ?: activities.find { it.label == selectedActivity }?.label
+                    ?: selectedActivity
     }
 
-    val filteredActivities = remember(query) {
-        if (query.isBlank()) activityList
-        else activityList.filter { it.contains(query.trim(), ignoreCase = true) }
+    val filteredActivities = remember(query, activities) {
+        if (query.isBlank()) activities
+        else activities.filter {
+            it.label.contains(query.trim(), ignoreCase = true) ||
+                    it.key.contains(query.trim(), ignoreCase = true)
+        }
     }
 
     ExposedDropdownMenuBox(
@@ -121,15 +107,15 @@ fun ActivityDropdown(
                     DropdownMenuItem(
                         text = {
                             Text(
-                                text = activity.toDisplayLabel(),
+                                text = activity.label,          // Display only activity name
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Normal,
                                 color = Color(0xFF1A1A1A)
                             )
                         },
                         onClick = {
-                            query = activity.toDisplayLabel()
-                            onActivitySelected(activity)
+                            query = activity.label
+                            onActivitySelected(activity.key)   // Send key back
                             expanded = false
                         },
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)

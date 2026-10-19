@@ -4,8 +4,11 @@ import com.example.juttela.DataSource.Models.FeedbackRequest
 import com.example.juttela.DataSource.Models.FeedbackResponse
 import com.example.juttela.DataSource.Apis.RetrofitClient
 import com.example.juttela.DataSource.Models.AcceptUsersModel
+import com.example.juttela.DataSource.Models.ActivityRequest
+import com.example.juttela.DataSource.Models.ActivityResponse
 import com.example.juttela.DataSource.Models.AddUserToSessionRequest
 import com.example.juttela.DataSource.Models.AddUserToSessionResponse
+import com.example.juttela.DataSource.Models.ApprovalModel
 import com.example.juttela.DataSource.Models.ArrivalsResponse
 import com.example.juttela.DataSource.Models.CancelSessionResponse
 import com.example.juttela.DataSource.Models.ConnectionsRequest
@@ -13,6 +16,7 @@ import com.example.juttela.DataSource.Models.ConnectionsResponse
 import com.example.juttela.DataSource.Models.DeleteAccountResponse
 import com.example.juttela.DataSource.Models.GeoAddRequestModel
 import com.example.juttela.DataSource.Models.GeoAddResponseModel
+import com.example.juttela.DataSource.Models.GetAllActivity
 import com.example.juttela.DataSource.Models.GetIdRequest
 import com.example.juttela.DataSource.Models.GetMessagesRequest
 import com.example.juttela.DataSource.Models.GetMessagesResponse
@@ -202,6 +206,19 @@ class AuthRepository {
 
     suspend fun LoginDataModelRepo(request : LoginRequest ) : LoginResponse{
         return RetrofitClient.api.LoginApi(request)
+    }
+
+    suspend fun getUserApproval(userId: String): ApprovalModel {
+        return RetrofitClient.api.getUserApproval(userId).body()
+            ?: throw Exception("Approval response is empty")
+    }
+
+    suspend fun createActivityRepo(request : ActivityRequest) : ActivityResponse {
+        return RetrofitClient.api.createActivity(request)
+    }
+
+    suspend fun GetAllActivityRepo(): GetAllActivity{
+        return RetrofitClient.api.getallactivity()
     }
 
 }

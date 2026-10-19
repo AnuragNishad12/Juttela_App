@@ -64,7 +64,6 @@ import android.os.Build
 import android.util.Log
 import android.widget.Toast
 import com.example.juttela.DataSource.Models.AgePreference
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.ui.graphics.Brush
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -76,65 +75,53 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ThumbUp
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import coil.compose.AsyncImage
-import com.example.juttela.DataSource.Models.LiveDeal
 import com.example.juttela.DataSource.Models.Match
 import com.example.juttela.DataSource.Models.ProfileDataNew
 import com.example.juttela.DataSource.Models.SendingSmartRequest
 import com.example.juttela.DataSource.Models.SmartMatch
 import com.example.juttela.R
+import com.example.juttela.Utils.ApprovalPrefs
 import com.example.juttela.Utils.CloudinaryUploader
 import com.example.juttela.Utils.DailyFindLimitStore
 import com.example.juttela.Utils.DailyProCardStore
 import com.example.juttela.Utils.DeleteAccountConfirmationDialog
 import com.example.juttela.Utils.DraggableProSubscriptionCard
-import com.example.juttela.Utils.LiveDealCard
 import com.example.juttela.Utils.LocationRow
 import com.example.juttela.Utils.NearbyMatchesDialog
 import com.example.juttela.Utils.PopularNearYouPlaceholder
 import com.example.juttela.Utils.SmartNearbyMatchesDialog
 import com.example.juttela.Utils.SmartPreferenceDialog
 import com.example.juttela.Utils.UserPrefs
+import com.example.juttela.Utils.VerificationPassCard
 import com.example.juttela.Utils.getGreeting
+import com.example.juttela.ViewModels.ApprovalViewModel
 import com.example.juttela.ViewModels.DeleteAccountViewModel
 import com.example.juttela.ViewModels.FindMateViewModel
+import com.example.juttela.ViewModels.GetAllActivityViewModel
 import com.example.juttela.ViewModels.GetProfileViewModel
 import com.example.juttela.ViewModels.RequestViewModel
 import com.example.juttela.ViewModels.SmartMatchViewModel
@@ -169,6 +156,14 @@ fun HomeScreen(navController: NavController) {
     val isPro by subscriptionViewModel.isPro.collectAsState()
     val dailyStore = remember { DailyProCardStore(context) }
     val currentUserId = UserPrefs.getUserId(context).orEmpty()
+    val isVerified = remember { ApprovalPrefs.isApproved(context) }
+
+    val userId = UserPrefs.getUserId(context)
+    val viewModel: GetAllActivityViewModel = viewModel()
+
+
+
+
 
     // ---- Smart match preference persistence ----
     // Stores the user's chosen age/gender preference so the preference dialog
@@ -176,6 +171,8 @@ fun HomeScreen(navController: NavController) {
     val smartPrefsStore = remember {
         context.getSharedPreferences("juttela_smart_prefs", android.content.Context.MODE_PRIVATE)
     }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     // FIXED: AgePreference is a data class { min: Int, max: Int }, not an enum,
     // so it has no .name / .valueOf(). Persist its two Int fields instead and
@@ -189,6 +186,11 @@ fun HomeScreen(navController: NavController) {
             }
         )
     }
+
+    LaunchedEffect(Unit) {
+        viewModel.getAllActivities { _, _, _ -> }
+    }
+
     var savedGenderPreference by remember {
         mutableStateOf(smartPrefsStore.getString("gender_preference", null))
     }
@@ -630,32 +632,48 @@ fun HomeScreen(navController: NavController) {
                     )
                 }
 
-                // Profile Icon - now clickable, shows the saved profile image when available
-                Box(
-                    modifier = Modifier
-                        .size(52.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFFDCEBFF))
-                        .clickable { onProfileClicked() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (!headerProfileImageUrl.isNullOrBlank()) {
-                        AsyncImage(
-                            model = headerProfileImageUrl,
-                            contentDescription = "Profile",
+                // Avatar + badge together in ONE Box
+                Box(modifier = Modifier.size(52.dp)) {
+
+                    // Profile Icon
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(CircleShape)
+                            .background(Color(0xFFDCEBFF))
+                            .clickable { onProfileClicked() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (!headerProfileImageUrl.isNullOrBlank()) {
+                            AsyncImage(
+                                model = headerProfileImageUrl,
+                                contentDescription = "Profile",
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(CircleShape),
+                                contentScale = ContentScale.Crop,
+                                placeholder = painterResource(id = R.drawable.juttelaprofile),
+                                error = painterResource(id = R.drawable.juttelaprofile)
+                            )
+                        } else {
+                            Icon(
+                                painter = painterResource(id = R.drawable.juttelaprofile),
+                                contentDescription = "Profile",
+                                modifier = Modifier.size(24.dp),
+                                tint = Color(0xFF4A6CF7)
+                            )
+                        }
+                    }
+
+                    // Verified badge: top-left, on top of the avatar
+                    if (isVerified) {
+                        Image(
+                            painter = painterResource(id = R.drawable.verifieduser),
+                            contentDescription = "Verified user",
                             modifier = Modifier
-                                .fillMaxSize()
-                                .clip(CircleShape),
-                            contentScale = ContentScale.Crop,
-                            placeholder = painterResource(id = R.drawable.juttelaprofile),
-                            error = painterResource(id = R.drawable.juttelaprofile)
-                        )
-                    } else {
-                        Icon(
-                            painter = painterResource(id = R.drawable.juttelaprofile),
-                            contentDescription = "Profile",
-                            modifier = Modifier.size(24.dp),
-                            tint = Color(0xFF4A6CF7)
+                                .align(Alignment.TopEnd)
+                                .offset(x = 7.dp, y = (-6).dp)
+                                .size(30.dp)
                         )
                     }
                 }
@@ -716,6 +734,7 @@ fun HomeScreen(navController: NavController) {
             Spacer(modifier = Modifier.height(10.dp))
 
             ActivityDropdown(
+                activities = viewModel.state.response?.data ?: emptyList(),
                 selectedActivity = activity,
                 onActivitySelected = { activity = it }
             )
@@ -910,7 +929,7 @@ fun HomeScreen(navController: NavController) {
         }
 
         // ==================== PROFILE DETAILS SCREEN ====================
-        if (showProfileScreen && currentProfile != null) {
+        if (showProfileScreen && currentProfile != null && userId != null) {
             ProfileDetailsScreen(
                 profile = currentProfile!!,
                 isPro = isPro,
@@ -926,7 +945,14 @@ fun HomeScreen(navController: NavController) {
                         popUpTo(0) { inclusive = true }
                     }
                 },
-                onDeleteAccount = { showDeleteDialog = true }
+                onDeleteAccount = {
+                    showDeleteDialog = true
+                },
+
+                onVerifyClick = {
+                    showProfileScreen = false
+                    navController.navigate("verification/$userId")
+                }
             )
         }
 
@@ -1143,9 +1169,14 @@ fun ProfileDetailsScreen(
     onLogout: () -> Unit,
     onDeleteAccount: () -> Unit,
     isPro: Boolean = false,
-    onUpgradeClick: () -> Unit = {}
+    onVerifyClick: () -> Unit = {} ,
+            onUpgradeClick: () -> Unit = {},
+
 ) {
     var showLogoutDialog by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    val approvalViewModel: ApprovalViewModel = viewModel()
 
     val interests = profile.interests ?: emptyList()
     val ratingAverage = profile.rating?.average ?: 0.0
@@ -1161,6 +1192,35 @@ fun ProfileDetailsScreen(
             .replace("_", " ")
             .split(" ")
             .joinToString(" ") { word -> word.replaceFirstChar { it.uppercase() } }
+    }
+
+    // ---------- Approval status from API ----------
+    val storedUserId = UserPrefs.getUserId(context)
+    Log.d("STORED_USER_ID", storedUserId ?: "none found")
+
+    var approvalStatus by remember { mutableStateOf<String?>(null) }   // null = still loading
+
+    LaunchedEffect(storedUserId) {
+        if (!storedUserId.isNullOrBlank()) {
+            approvalViewModel.getUserApproval(storedUserId) { success, message, approval ->
+                Log.d(
+                    "ApprovalResult",
+                    "success=$success, message=$message, status=${approval?.approvalStatus}"
+                )
+                if (success) {
+                    approvalStatus =
+                        approval?.approvalStatus?.trim()?.lowercase() ?: "not_verified"
+                }
+            }
+        }
+    }
+
+    val isApproved = approvalStatus == "approved"
+
+    val cardStatus = when (approvalStatus) {
+        "pending"  -> ApprovalPrefs.VerificationStatus.PENDING
+        "rejected" -> ApprovalPrefs.VerificationStatus.REJECTED
+        else       -> ApprovalPrefs.VerificationStatus.NOT_VERIFIED
     }
 
     Box(
@@ -1256,6 +1316,18 @@ fun ProfileDetailsScreen(
                         fontWeight = FontWeight.ExtraBold,
                         color = TextDark
                     )
+
+                    // Verified tick (only when approved)
+                    if (isApproved) {
+                        Spacer(modifier = Modifier.width(6.dp))
+
+                        Image(
+                            painter = painterResource(id = R.drawable.verifieduser),
+                            contentDescription = "Verified",
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
                     if (isPro) {
                         Spacer(modifier = Modifier.width(6.dp))
                         Icon(
@@ -1308,6 +1380,22 @@ fun ProfileDetailsScreen(
                     label = "Interests"
                 )
             }
+
+            // ---------- Identity verification pass ----------
+            // shows only after the API answered AND the user is not approved
+            if (approvalStatus != null && !isApproved) {
+                Spacer(modifier = Modifier.height(18.dp))
+                VerificationPassCard(
+                    status = cardStatus,
+                    onVerifyClick = onVerifyClick
+                )
+            }
+
+//            Spacer(modifier = Modifier.height(18.dp))
+//            VerificationPassCard(
+//                status = cardStatus,
+//                onVerifyClick = onVerifyClick
+//            )
 
             Spacer(modifier = Modifier.height(18.dp))
 

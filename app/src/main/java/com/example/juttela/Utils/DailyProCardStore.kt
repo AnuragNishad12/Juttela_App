@@ -24,7 +24,7 @@ class DailyProCardStore(context: Context) {
 class DailyFindLimitStore(context: Context) {
 
     companion object {
-        const val DAILY_FIND_LIMIT = 15
+        const val DAILY_FIND_LIMIT = 7
     }
 
     private val prefs = context.applicationContext

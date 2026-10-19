@@ -17,6 +17,7 @@ import com.example.juttela.Screens.HomeScreen
 import com.example.juttela.Screens.LiveTrackingMapScreen
 import com.example.juttela.Screens.LoginScreen
 import com.example.juttela.Screens.MainScreen
+import com.example.juttela.Screens.SelfieCaptureScreen
 import com.example.juttela.Screens.SignUpScreen
 import com.example.juttela.Screens.SplashScreen
 import com.example.juttela.Screens.Subscription.SubscriptionScreen
@@ -39,6 +40,23 @@ fun AppNavigation() {
 
         composable("home") {
             HomeScreen( navController = navController)
+        }
+
+        composable("verification/{userId}") { backStackEntry ->
+
+            val userId = backStackEntry.arguments?.getString("userId")
+                ?: return@composable
+
+            SelfieCaptureScreen(
+                navController = navController,
+                userId = userId,
+                onUploadSuccess = { selfieUrl, idUrl ->
+                    // Handle successful upload here
+                },
+                onUploadFailed = {
+                    // Handle upload failure here
+                }
+            )
         }
 
 
